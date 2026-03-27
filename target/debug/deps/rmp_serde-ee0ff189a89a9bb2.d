@@ -1,0 +1,12 @@
+/Users/r2d2/rust-back/bac123/target/debug/deps/rmp_serde-ee0ff189a89a9bb2.d: /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/lib.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/bytes.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/config.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/decode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/encode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/../README.md
+
+/Users/r2d2/rust-back/bac123/target/debug/deps/librmp_serde-ee0ff189a89a9bb2.rlib: /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/lib.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/bytes.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/config.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/decode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/encode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/../README.md
+
+/Users/r2d2/rust-back/bac123/target/debug/deps/librmp_serde-ee0ff189a89a9bb2.rmeta: /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/lib.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/bytes.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/config.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/decode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/encode.rs /Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/../README.md
+
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/lib.rs:
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/bytes.rs:
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/config.rs:
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/decode.rs:
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/encode.rs:
+/Users/r2d2/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rmp-serde-1.3.1/src/../README.md:

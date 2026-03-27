@@ -1,0 +1,77 @@
+ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT
+================================================
+
+Дата: 2026-03-16 14:59:34
+Файл данных: synthetic_data.csv
+
+KNN параметры: k=5
+
+Количество обучающих примеров: 480
+
+СВОДКА ПО ПРЕДИКАТАМ:
+
+1. Predicate { column: "age", operator: Eq, value: 35.01490020751953, value2: None }
+   Actual: 0.000000, KNN: 0.039002, Hist: 0.042082, Approx: 0.010000
+   Error KNN: 0.039002, Error Hist: 0.042082, Error Approx: 0.010000
+   Recommended scan: Index Scan
+
+2. Predicate { column: "age", operator: Lt, value: 25.073280996269087, value2: None }
+   Actual: 0.169900, KNN: 0.186029, Hist: 0.167946, Approx: 0.330000
+   Error KNN: 0.016129, Error Hist: 0.001954, Error Approx: 0.160100
+   Recommended scan: Index Scan
+
+3. Predicate { column: "age", operator: Gt, value: 39.98570981314475, value2: None }
+   Actual: 0.328100, KNN: 0.326727, Hist: 0.309898, Approx: 0.330000
+   Error KNN: 0.001373, Error Hist: 0.018202, Error Approx: 0.001900
+   Recommended scan: Seq Scan
+
+4. Predicate { column: "age", operator: Between, value: 7.941619211250444, value2: Some(61.05838078874956) }
+   Actual: 0.993200, KNN: 0.602491, Hist: 0.992237, Approx: 0.250000
+   Error KNN: 0.390709, Error Hist: 0.000963, Error Approx: 0.743200
+   Recommended scan: Seq Scan
+
+5. Predicate { column: "salary", operator: Eq, value: 520285.90625, value2: None }
+   Actual: 0.000000, KNN: 0.000143, Hist: 0.000000, Approx: 0.010000
+   Error KNN: 0.000143, Error Hist: 0.000000, Error Approx: 0.010000
+   Recommended scan: Index Scan
+
+6. Predicate { column: "salary", operator: Lt, value: -7290150.027998997, value2: None }
+   Actual: 0.000000, KNN: 0.154317, Hist: 0.000000, Approx: 0.330000
+   Error KNN: 0.154317, Error Hist: 0.000000, Error Approx: 0.330000
+   Recommended scan: Index Scan
+
+7. Predicate { column: "salary", operator: Gt, value: 4425503.873374498, value2: None }
+   Actual: 0.010400, KNN: 0.161155, Hist: 0.870065, Approx: 0.330000
+   Error KNN: 0.150755, Error Hist: 0.859665, Error Approx: 0.319600
+   Recommended scan: Index Scan
+
+8. Predicate { column: "salary", operator: Between, value: 7860438.934248997, value2: Some(664586722.065751) }
+   Actual: 0.005800, KNN: 0.106479, Hist: 0.768038, Approx: 0.250000
+   Error KNN: 0.100679, Error Hist: 0.762238, Error Approx: 0.244200
+   Recommended scan: Index Scan
+
+9. Predicate { column: "score", operator: Eq, value: 49.93186950683594, value2: None }
+   Actual: 0.000000, KNN: 0.000223, Hist: 0.008902, Approx: 0.010000
+   Error KNN: 0.000223, Error Hist: 0.008902, Error Approx: 0.010000
+   Recommended scan: Index Scan
+
+10. Predicate { column: "score", operator: Lt, value: 21.07570618561297, value2: None }
+   Actual: 0.209400, KNN: 0.202055, Hist: 0.209307, Approx: 0.330000
+   Error KNN: 0.007345, Error Hist: 0.000093, Error Approx: 0.120600
+   Recommended scan: Index Scan
+
+11. Predicate { column: "score", operator: Gt, value: 64.35995116744742, value2: None }
+   Actual: 0.354900, KNN: 0.291986, Hist: 0.354460, Approx: 0.330000
+   Error KNN: 0.062914, Error Hist: 0.000440, Error Approx: 0.024900
+   Recommended scan: Bitmap Scan
+
+12. Predicate { column: "score", operator: Between, value: 28.85616332122297, value2: Some(71.12383667877704) }
+   Actual: 0.419600, KNN: 0.374415, Hist: 0.420912, Approx: 0.250000
+   Error KNN: 0.045185, Error Hist: 0.001312, Error Approx: 0.169600
+   Recommended scan: Seq Scan
+
+
+ИТОГОВАЯ СТАТИСТИКА:
+Средняя ошибка KNN: 0.080731
+Средняя ошибка гистограммы: 0.141321
+Средняя ошибка приближенной оценки: 0.178675

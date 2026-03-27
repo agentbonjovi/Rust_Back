@@ -1,0 +1,56 @@
+ML OPTIMIZER FOR POSTGRESQL - ANALYSIS REPORT
+============================================
+
+Дата: 2026-02-25 13:29:11
+Файл данных: synthetic_data.csv
+
+СВОДКА ПО ПРЕДИКАТАМ:
+
+1. Predicate { column: "age", operator: Eq, value: 35.01490020751953, value2: None }
+   Actual: 0.000000, ML: 0.014085, Hist: 0.042082, Approx: 0.010000
+   Recommended scan: Index Scan
+
+2. Predicate { column: "age", operator: Lt, value: 25.073280996269087, value2: None }
+   Actual: 0.169900, ML: 0.195537, Hist: 0.167946, Approx: 0.330000
+   Recommended scan: Index Scan
+
+3. Predicate { column: "age", operator: Gt, value: 39.98570981314475, value2: None }
+   Actual: 0.328100, ML: 0.330215, Hist: 0.309898, Approx: 0.330000
+   Recommended scan: Seq Scan
+
+4. Predicate { column: "age", operator: Between, value: 7.941619211250444, value2: Some(61.05838078874956) }
+   Actual: 0.993200, ML: 0.955198, Hist: 0.992237, Approx: 0.250000
+   Recommended scan: Seq Scan
+
+5. Predicate { column: "salary", operator: Eq, value: 520285.90625, value2: None }
+   Actual: 0.000000, ML: 0.000104, Hist: 0.000000, Approx: 0.010000
+   Recommended scan: Index Scan
+
+6. Predicate { column: "salary", operator: Lt, value: -7290150.027998997, value2: None }
+   Actual: 0.000000, ML: 0.195537, Hist: 0.000000, Approx: 0.330000
+   Recommended scan: Index Scan
+
+7. Predicate { column: "salary", operator: Gt, value: 4425503.873374498, value2: None }
+   Actual: 0.010400, ML: 0.330215, Hist: 0.870065, Approx: 0.330000
+   Recommended scan: Seq Scan
+
+8. Predicate { column: "salary", operator: Between, value: 7860438.934248997, value2: Some(664586722.065751) }
+   Actual: 0.005800, ML: 0.209282, Hist: 0.768038, Approx: 0.250000
+   Recommended scan: Index Scan
+
+9. Predicate { column: "score", operator: Eq, value: 49.93186950683594, value2: None }
+   Actual: 0.000000, ML: 0.000158, Hist: 0.008902, Approx: 0.010000
+   Recommended scan: Index Scan
+
+10. Predicate { column: "score", operator: Lt, value: 21.07570618561297, value2: None }
+   Actual: 0.209400, ML: 0.195537, Hist: 0.209307, Approx: 0.330000
+   Recommended scan: Index Scan
+
+11. Predicate { column: "score", operator: Gt, value: 64.35995116744742, value2: None }
+   Actual: 0.354900, ML: 0.330215, Hist: 0.354460, Approx: 0.330000
+   Recommended scan: Seq Scan
+
+12. Predicate { column: "score", operator: Between, value: 28.85616332122297, value2: Some(71.12383667877704) }
+   Actual: 0.419600, ML: 0.476118, Hist: 0.420912, Approx: 0.250000
+   Recommended scan: Seq Scan
+
