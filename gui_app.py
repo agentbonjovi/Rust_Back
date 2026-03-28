@@ -1,0 +1,1102 @@
+#!/usr/bin/env python3
+"""Надежный GUI без tkinter: локальный web-интерфейс на стандартной библиотеке."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import csv
+import os
+import random
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+
+ROOT_DIR = Path(__file__).resolve().parent
+DEFAULT_DATASET = ROOT_DIR / "synthetic_data.csv"
+REPORT_FILE = ROOT_DIR / "ml_optimizer_knn_report.txt"
+LOCAL_DASHBOARD_FILE = ROOT_DIR / "ml_optimizer_dashboard.html"
+HOST = "127.0.0.1"
+START_PORT = 8765
+MAX_ROWS_FOR_PREVIEW = 5000
+
+
+HTML_PAGE = """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML Optimizer</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffaf4;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --accent: #0f766e;
+      --accent-2: #b45309;
+      --accent-3: #2563eb;
+      --accent-4: #d97706;
+      --accent-5: #7c3aed;
+      --accent-6: #be123c;
+      --border: #d6c7b6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(180, 83, 9, 0.12), transparent 28%),
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 32%),
+        var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 18px 36px;
+    }
+    .hero {
+      margin-bottom: 18px;
+      padding: 20px 24px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 250, 244, 0.9);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 14px 45px rgba(31, 41, 55, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 5vw, 44px);
+      line-height: 1.05;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .stat {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fff, #f9f2e9);
+    }
+    .stat strong {
+      display: block;
+      font-size: 26px;
+      line-height: 1.1;
+      margin-top: 6px;
+    }
+    .stat span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 10px 32px rgba(31, 41, 55, 0.05);
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    input[type=text] {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      font-size: 15px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 14px;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: .55; cursor: default; transform: none; }
+    .primary { background: var(--accent); color: #fff; }
+    .secondary { background: #efe5d7; color: var(--ink); }
+    .status {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #f6efe6;
+      color: var(--ink);
+      font-size: 14px;
+      min-height: 52px;
+    }
+    .meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .panel-title {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    pre {
+      margin: 0;
+      min-height: 360px;
+      max-height: 520px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid #d9d9d9;
+      background: #1e1e1e;
+      color: #f8fafc;
+      font: 13px/1.45 "SFMono-Regular", Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .report {
+      background: #fffdf8;
+      color: #1f2937;
+      border-color: #e7dccf;
+    }
+    .hint {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .chart-box {
+      min-height: 320px;
+    }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee3d4;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #fbf4ea;
+      z-index: 1;
+    }
+    .chart-box svg {
+      width: 100%;
+      height: 220px;
+      display: block;
+      overflow: visible;
+    }
+    .bar-label {
+      font-size: 11px;
+      fill: #6b7280;
+    }
+    .bar-value {
+      font-size: 11px;
+      fill: #1f2937;
+      font-weight: 700;
+    }
+    .chart-caption {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .empty-chart {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      background: #fff;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .charts { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>ML Optimizer</h1>
+    </section>
+
+    <section class="card" style="margin-bottom: 18px;">
+      <label for="dataset">CSV-файл для анализа</label>
+      <input id="dataset" type="text" value="__DEFAULT_DATASET__" spellcheck="false">
+      <div class="row">
+        <button class="primary" id="runBtn">Запустить анализ</button>
+        <button class="secondary" id="generateBtn">Сгенерировать CSV</button>
+        <button class="secondary" id="defaultBtn">Подставить synthetic_data.csv</button>
+        <button class="secondary" id="refreshBtn">Обновить данные</button>
+      </div>
+      <div class="status" id="status">Загрузка состояния...</div>
+      <div class="meta">Если файл не существует, Rust-приложение само сгенерирует синтетический CSV.</div>
+      <div class="hint" id="modeHint">Окно работает по адресу <code>__SERVER_URL__</code>. Можно открыть и вручную, если браузер не запустился автоматически.</div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="charts">
+      <div class="card chart-box">
+        <h2 class="panel-title">Средняя ошибка моделей</h2>
+        <div id="errorChart"></div>
+        <div class="chart-caption" id="errorCaption"></div>
+      </div>
+      <div class="card chart-box">
+        <h2 class="panel-title">Средняя селективность</h2>
+        <div id="selectivityChart"></div>
+        <div class="chart-caption" id="selectivityCaption"></div>
+      </div>
+      <div class="card chart-box">
+        <h2 class="panel-title">Рекомендованные сканы</h2>
+        <div id="scanChart"></div>
+        <div class="chart-caption" id="scanCaption"></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-bottom: 18px;">
+      <h2 class="panel-title">Предпросмотр CSV</h2>
+      <div id="previewMeta" class="meta">Загрузка предпросмотра...</div>
+      <div class="table-wrap" style="margin-top: 12px;">
+        <table>
+          <thead id="previewHead"></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2 class="panel-title">Вывод процесса</h2>
+        <pre id="output">Ожидание запуска...</pre>
+      </div>
+      <div class="card">
+        <h2 class="panel-title">Отчет</h2>
+        <pre class="report" id="report">Отчет будет показан здесь.</pre>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const datasetInput = document.getElementById("dataset");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const reportEl = document.getElementById("report");
+    const statsEl = document.getElementById("stats");
+    const previewMetaEl = document.getElementById("previewMeta");
+    const previewHeadEl = document.getElementById("previewHead");
+    const previewBodyEl = document.getElementById("previewBody");
+    const runBtn = document.getElementById("runBtn");
+    const generateBtn = document.getElementById("generateBtn");
+    const defaultBtn = document.getElementById("defaultBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const defaultDataset = __DEFAULT_DATASET_JSON__;
+    const appMode = "__APP_MODE__";
+    const initialState = __INITIAL_STATE_JSON__;
+
+    function esc(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function numberFmt(value) {
+      return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(value);
+    }
+
+    function renderStats(summary) {
+      if (!summary) {
+        statsEl.innerHTML = "";
+        return;
+      }
+      const items = [
+        ["Числ. столбцов", numberFmt(summary.numeric_columns || 0), "найдено в CSV"],
+        ["Предикатов", numberFmt(summary.predicate_count || 0), "проверено backend"],
+        ["KNN error", numberFmt(summary.avg_error_knn || 0), "средняя ошибка"],
+        ["Hist error", numberFmt(summary.avg_error_hist || 0), "средняя ошибка"]
+      ];
+      statsEl.innerHTML = items.map(([label, value, hint]) => `
+        <div class="stat">
+          <span>${esc(label)}</span>
+          <strong>${esc(value)}</strong>
+          <span>${esc(hint)}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderHistogram(targetId, captionId, bins, title, options = {}) {
+      const host = document.getElementById(targetId);
+      const caption = document.getElementById(captionId);
+      if (!bins || !bins.length) {
+        host.innerHTML = '<div class="empty-chart">Недостаточно данных</div>';
+        caption.textContent = "";
+        return;
+      }
+      const width = 320;
+      const height = 220;
+      const transform = options.scale === "sqrt" ? Math.sqrt : (value) => value;
+      const transformed = bins.map(bin => transform(bin.count));
+      const max = Math.max(...transformed, 1);
+      const gap = 8;
+      const barWidth = (width - gap * (bins.length - 1)) / bins.length;
+      const bars = bins.map((bin, index) => {
+        const x = index * (barWidth + gap);
+        const barHeight = (transformed[index] / max) * 170;
+        const y = height - barHeight - 24;
+        return `
+          <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="8" fill="#0f766e" opacity="${0.55 + (index / bins.length) * 0.35}"></rect>
+          <text x="${x + barWidth / 2}" y="${height - 8}" text-anchor="middle" font-size="10" fill="#6b7280">${esc(bin.label)}</text>
+        `;
+      }).join("");
+      const axis = options.axisMax ? `
+        <text x="0" y="12" font-size="10" fill="#6b7280">${esc(numberFmt(options.axisMin || 0))}</text>
+        <text x="${width / 2}" y="12" text-anchor="middle" font-size="10" fill="#6b7280">${esc(numberFmt((options.axisMax || 0) / 2))}</text>
+        <text x="${width}" y="12" text-anchor="end" font-size="10" fill="#6b7280">${esc(numberFmt(options.axisMax))}</text>
+      ` : "";
+      host.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(title)}">
+          ${axis}
+          <line x1="0" y1="${height - 24}" x2="${width}" y2="${height - 24}" stroke="#d6c7b6" />
+          ${bars}
+        </svg>
+      `;
+      const peak = bins.reduce((best, bin) => bin.count > best.count ? bin : best, bins[0]);
+      const scaleHint = options.scale === "sqrt" ? "Высота столбцов сглажена, чтобы длинный хвост не ломал график." : "";
+      caption.textContent = `Диапазон: ${options.axisMin ?? "auto"}-${options.axisMax ? numberFmt(options.axisMax) : "auto"}. Пиковый интервал: ${peak.label}, записей: ${numberFmt(peak.count)}. ${scaleHint}`.trim();
+    }
+
+    function colorForLabel(label, index) {
+      const normalized = String(label).toLowerCase();
+      if (normalized.includes("index")) return "var(--accent)";
+      if (normalized.includes("seq")) return "var(--accent-4)";
+      if (normalized.includes("bitmap")) return "var(--accent-5)";
+      const palette = ["var(--accent)", "var(--accent-3)", "var(--accent-4)", "var(--accent-5)", "var(--accent-6)"];
+      return palette[index % palette.length];
+    }
+
+    function formatChartValue(label, value) {
+      const normalized = String(label).toLowerCase();
+      if (normalized.includes("scan")) return String(value);
+      return Number(value).toFixed(3);
+    }
+
+    function renderBarChart(targetId, captionId, items, options = {}) {
+      const host = document.getElementById(targetId);
+      const caption = document.getElementById(captionId);
+      if (!items || !items.length) {
+        host.innerHTML = '<div class="empty-chart">Недостаточно данных</div>';
+        caption.textContent = "";
+        return;
+      }
+      const width = 340;
+      const leftPad = 88;
+      const rightPad = 42;
+      const rowHeight = 34;
+      const height = items.length * rowHeight + 16;
+      const max = Math.max(...items.map(item => Number(item.count) || 0), 1);
+      const rows = items.map((item, index) => {
+        const y = index * rowHeight + 8;
+        const lineWidth = ((Number(item.count) || 0) / max) * (width - leftPad - rightPad);
+        const fill = colorForLabel(item.label, index);
+        return `
+          <text class="bar-label" x="0" y="${y + 15}">${esc(item.label)}</text>
+          <rect x="${leftPad}" y="${y}" width="${width - leftPad - rightPad}" height="16" rx="8" fill="#efe5d7"></rect>
+          <rect x="${leftPad}" y="${y}" width="${lineWidth}" height="16" rx="8" fill="${fill}"></rect>
+          <text class="bar-value" x="${Math.min(leftPad + lineWidth + 8, width - rightPad + 4)}" y="${y + 13}">${esc(formatChartValue(item.label, item.count))}</text>
+        `;
+      }).join("");
+      host.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Столбчатая диаграмма">${rows}</svg>`;
+      caption.textContent = options.caption || `Показано значений: ${items.length}.`;
+    }
+
+    function renderPreview(preview) {
+      if (!preview || !preview.columns || !preview.columns.length) {
+        previewMetaEl.textContent = "Не удалось прочитать строки CSV.";
+        previewHeadEl.innerHTML = "";
+        previewBodyEl.innerHTML = "";
+        return;
+      }
+      previewMetaEl.textContent = `Столбцы: ${preview.columns.join(", ")}. Показано строк: ${preview.rows.length}.`;
+      previewHeadEl.innerHTML = `<tr>${preview.columns.map(col => `<th>${esc(col)}</th>`).join("")}</tr>`;
+      previewBodyEl.innerHTML = preview.rows.map(row => `
+        <tr>${preview.columns.map(col => `<td>${esc(row[col] ?? "")}</td>`).join("")}</tr>
+      `).join("");
+    }
+
+    function applyState(data) {
+      statusEl.textContent = data.status;
+      outputEl.textContent = data.output || "Ожидание запуска...";
+      reportEl.textContent = data.report || "Отчет пока не найден.";
+      runBtn.disabled = data.running;
+      generateBtn.disabled = data.running;
+      renderStats(data.summary);
+      renderBarChart("errorChart", "errorCaption", data.charts?.error_bars, {
+        caption: "Сравнение средних ошибок моделей селективности."
+      });
+      renderBarChart("selectivityChart", "selectivityCaption", data.charts?.selectivity_bars, {
+        caption: "Средние оценки селективности по всем сгенерированным предикатам."
+      });
+      renderBarChart("scanChart", "scanCaption", data.charts?.scan_counts, {
+        caption: "Сколько раз backend рекомендовал Index Scan, Seq Scan и Bitmap Scan."
+      });
+      renderPreview(data.preview);
+    }
+
+    async function fetchState() {
+      if (appMode === "local") {
+        applyState(initialState);
+        return;
+      }
+      const response = await fetch("/state", { cache: "no-store" });
+      const data = await response.json();
+      applyState(data);
+    }
+
+    async function runAnalysis() {
+      if (appMode === "local") {
+        statusEl.textContent = "В локальном standalone-режиме live-запуск недоступен. Используйте browser mode.";
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      await fetchState();
+    }
+
+    async function loadPreview() {
+      if (appMode === "local") {
+        applyState(initialState);
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      await fetchState();
+    }
+
+    async function generateCsv() {
+      if (appMode === "local") {
+        statusEl.textContent = "В standalone-режиме генерация из интерфейса отключена. Используйте browser mode.";
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      await loadPreview();
+    }
+
+    runBtn.addEventListener("click", runAnalysis);
+    generateBtn.addEventListener("click", generateCsv);
+    defaultBtn.addEventListener("click", () => {
+      datasetInput.value = defaultDataset;
+      loadPreview();
+    });
+    refreshBtn.addEventListener("click", loadPreview);
+
+    if (appMode === "local") {
+      runBtn.disabled = true;
+      document.getElementById("modeHint").textContent = "Это локальный standalone-дашборд без сервера. Для интерактивного запуска анализа используйте browser mode.";
+      fetchState();
+    } else {
+      fetchState().then(loadPreview);
+      setInterval(fetchState, 1200);
+    }
+  </script>
+</body>
+</html>
+"""
+
+
+class AppState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.running = False
+        self.status = "Готово к запуску анализа."
+        self.output = ""
+        self.report = self._read_report()
+        self.summary = {}
+        self.charts = {}
+        self.preview = {"columns": [], "rows": []}
+
+    def _read_report(self) -> str:
+        if REPORT_FILE.exists():
+            return REPORT_FILE.read_text(encoding="utf-8")
+        return "Отчет пока не найден.\n\nЗапустите анализ, чтобы создать новый отчет."
+
+    def snapshot(self) -> dict[str, object]:
+        with self.lock:
+            return {
+                "running": self.running,
+                "status": self.status,
+                "output": self.output,
+                "report": self.report,
+                "summary": self.summary,
+                "charts": self.charts,
+                "preview": self.preview,
+            }
+
+    def set_status(self, status: str) -> None:
+        with self.lock:
+            self.status = status
+
+    def set_running(self, running: bool) -> None:
+        with self.lock:
+            self.running = running
+
+    def reset_output(self) -> None:
+        with self.lock:
+            self.output = ""
+
+    def append_output(self, chunk: str) -> None:
+        with self.lock:
+            self.output += chunk
+
+    def reload_report(self) -> None:
+        with self.lock:
+            self.report = self._read_report()
+
+    def update_preview(self, summary: dict[str, object], charts: dict[str, object]) -> None:
+        with self.lock:
+            self.summary = summary
+            self.charts = charts
+
+    def set_preview(self, preview: dict[str, object]) -> None:
+        with self.lock:
+            self.preview = preview
+
+
+STATE = AppState()
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _is_number(value: str) -> bool:
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _build_histogram(
+    values: list[float],
+    bins: int = 8,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> list[dict[str, object]]:
+    if not values:
+        return []
+    low = min(values) if min_value is None else min_value
+    high = max(values) if max_value is None else max_value
+    if high == low:
+        return [{"label": f"{low:.0f}", "count": len(values)}]
+    width = (high - low) / bins
+    counts = [0] * bins
+    for value in values:
+        clamped = min(max(value, low), high)
+        index = int((clamped - low) / width)
+        if index >= bins:
+            index = bins - 1
+        counts[index] += 1
+    result = []
+    for index, count in enumerate(counts):
+        start = low + width * index
+        end = start + width
+        result.append({"label": f"{start:.0f}-{end:.0f}", "count": count})
+    return result
+
+
+def _should_show_output_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    hidden_prefixes = (
+        "Compiling ",
+        "Finished ",
+        "Running ",
+        "warning:",
+        "-->",
+        "=",
+        "|",
+    )
+    if stripped.startswith(hidden_prefixes):
+        return False
+    if stripped.startswith("note:"):
+        return False
+    if stripped.startswith("help:"):
+        return False
+    if stripped.startswith("For more information about this error"):
+        return False
+    if stripped.startswith("thread '"):
+        return False
+    if stripped.startswith("stack backtrace:"):
+        return False
+    return True
+
+
+def resolve_backend_command(dataset_path: Path) -> list[str]:
+    compiled_binary = ROOT_DIR / "target" / "debug" / "bac123"
+    if compiled_binary.exists():
+        return [str(compiled_binary), str(dataset_path)]
+
+    candidates = [
+        shutil.which("cargo"),
+        str(Path.home() / ".cargo" / "bin" / "cargo"),
+        "/opt/homebrew/bin/cargo",
+        "/usr/local/bin/cargo",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return [candidate, "run", "--", str(dataset_path)]
+
+    raise FileNotFoundError(
+        "Не найден ни `cargo`, ни готовый бинарник `target/debug/bac123`."
+    )
+
+
+def render_html_page(server_url: str, app_mode: str, initial_state: dict[str, object]) -> str:
+    return (
+        HTML_PAGE
+        .replace("__DEFAULT_DATASET__", html.escape(str(DEFAULT_DATASET)))
+        .replace("__DEFAULT_DATASET_JSON__", json.dumps(str(DEFAULT_DATASET)))
+        .replace("__SERVER_URL__", html.escape(server_url))
+        .replace("__APP_MODE__", app_mode)
+        .replace("__INITIAL_STATE_JSON__", json.dumps(initial_state, ensure_ascii=False))
+    )
+
+
+def generate_synthetic_csv_file(output_path: Path, num_rows: int = 10_000) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["id", "age", "salary", "department_id", "score", "years_experience"])
+        for index in range(num_rows):
+            age = max(18, int(round(random.gauss(35, 10))))
+            salary = int(round(50_000 * ((1.0 - random.random()) ** -1.0)))
+            department_id = random.randint(1, 20)
+            score = round(random.uniform(0, 100), 2)
+            experience = random.randint(0, max(age - 22, 1))
+            writer.writerow([index, age, salary, department_id, score, experience])
+
+
+def load_csv_preview(dataset_raw: str, max_rows: int = 8) -> dict[str, object]:
+    dataset_value = dataset_raw.strip() or str(DEFAULT_DATASET)
+    path = Path(dataset_value).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Файл не найден: {path}")
+
+    with path.open(encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        columns = reader.fieldnames or []
+        rows = []
+        for index, row in enumerate(reader):
+            if index >= max_rows:
+                break
+            rows.append({column: row.get(column, "") for column in columns})
+
+    return {"columns": columns, "rows": rows}
+
+
+def parse_report_metrics(report_text: str, dataset_path: Path | None = None) -> tuple[dict[str, object], dict[str, object]]:
+    if not report_text.strip():
+        return {}, {}
+
+    value_pattern = re.compile(r"Actual: ([0-9.]+), KNN: ([0-9.]+), Hist: ([0-9.]+), Approx: ([0-9.]+)")
+    error_pattern = re.compile(r"Error KNN: ([0-9.]+), Error Hist: ([0-9.]+), Error Approx: ([0-9.]+)")
+    scan_pattern = re.compile(r"Recommended scan: (.+)")
+    numeric_columns_pattern = re.compile(r"Числовые столбцы: (.+)")
+    dataset_pattern = re.compile(r"Файл данных: (.+)")
+
+    values = []
+    errors = []
+    scan_counts: dict[str, int] = {}
+    numeric_columns = 0
+    report_dataset: str | None = None
+
+    for line in report_text.splitlines():
+        dataset_match = dataset_pattern.search(line)
+        if dataset_match:
+            report_dataset = dataset_match.group(1).strip()
+            continue
+        value_match = value_pattern.search(line)
+        if value_match:
+            values.append(tuple(float(item) for item in value_match.groups()))
+            continue
+        error_match = error_pattern.search(line)
+        if error_match:
+            errors.append(tuple(float(item) for item in error_match.groups()))
+            continue
+        scan_match = scan_pattern.search(line)
+        if scan_match:
+            label = scan_match.group(1).strip()
+            scan_counts[label] = scan_counts.get(label, 0) + 1
+            continue
+        numeric_match = numeric_columns_pattern.search(line)
+        if numeric_match:
+            numeric_columns = len([part for part in numeric_match.group(1).split(",") if part.strip()])
+
+    if dataset_path is not None and report_dataset is not None:
+        if Path(report_dataset).expanduser().resolve() != dataset_path.resolve():
+            return {}, {}
+
+    summary: dict[str, object] = {
+        "numeric_columns": numeric_columns,
+        "predicate_count": len(values),
+    }
+    charts: dict[str, object] = {}
+
+    if errors:
+        avg_knn = sum(item[0] for item in errors) / len(errors)
+        avg_hist = sum(item[1] for item in errors) / len(errors)
+        avg_approx = sum(item[2] for item in errors) / len(errors)
+        summary["avg_error_knn"] = round(avg_knn, 4)
+        summary["avg_error_hist"] = round(avg_hist, 4)
+        summary["avg_error_approx"] = round(avg_approx, 4)
+        charts["error_bars"] = [
+            {"label": "KNN", "count": round(avg_knn, 4)},
+            {"label": "Hist", "count": round(avg_hist, 4)},
+            {"label": "Approx", "count": round(avg_approx, 4)},
+        ]
+
+    if values:
+        avg_actual = sum(item[0] for item in values) / len(values)
+        avg_knn_sel = sum(item[1] for item in values) / len(values)
+        avg_hist_sel = sum(item[2] for item in values) / len(values)
+        avg_approx_sel = sum(item[3] for item in values) / len(values)
+        charts["selectivity_bars"] = [
+            {"label": "Actual", "count": round(avg_actual, 4)},
+            {"label": "KNN", "count": round(avg_knn_sel, 4)},
+            {"label": "Hist", "count": round(avg_hist_sel, 4)},
+            {"label": "Approx", "count": round(avg_approx_sel, 4)},
+        ]
+
+    if scan_counts:
+        charts["scan_counts"] = [
+            {"label": key, "count": value}
+            for key, value in sorted(scan_counts.items(), key=lambda item: item[1], reverse=True)
+        ]
+
+    return summary, charts
+
+
+def load_dataset_preview(dataset_raw: str) -> tuple[dict[str, object], dict[str, object]]:
+    dataset_value = dataset_raw.strip() or str(DEFAULT_DATASET)
+    path = Path(dataset_value).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Файл не найден: {path}")
+
+    numeric_columns = 0
+    with path.open(encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        headers = reader.fieldnames or []
+        sample: dict[str, list[str]] = {header: [] for header in headers}
+        for index, row in enumerate(reader):
+            if index >= MAX_ROWS_FOR_PREVIEW:
+                break
+            for header in headers:
+                sample[header].append((row.get(header) or "").strip())
+
+    for values in sample.values():
+        clean = [value for value in values if value]
+        if clean and all(_is_number(value) for value in clean):
+            numeric_columns += 1
+
+    report_text = REPORT_FILE.read_text(encoding="utf-8") if REPORT_FILE.exists() else ""
+    summary, charts = parse_report_metrics(report_text, path)
+    if not summary:
+        summary = {
+            "numeric_columns": numeric_columns,
+            "predicate_count": 0,
+            "avg_error_knn": 0.0,
+            "avg_error_hist": 0.0,
+            "avg_error_approx": 0.0,
+        }
+    else:
+        summary["numeric_columns"] = numeric_columns or summary.get("numeric_columns", 0)
+    return summary, charts
+
+
+def create_local_dashboard(dataset_raw: str) -> Path:
+    summary, charts = load_dataset_preview(dataset_raw)
+    report = REPORT_FILE.read_text(encoding="utf-8") if REPORT_FILE.exists() else "Отчет пока не найден."
+    preview = load_csv_preview(dataset_raw)
+    snapshot = {
+        "running": False,
+        "status": "Локальный дашборд построен по текущему CSV.",
+        "output": "Standalone-режим показывает локальный снимок данных и отчета.\nДля интерактивного запуска Rust-анализа используйте browser mode.",
+        "report": report,
+        "summary": summary,
+        "charts": charts,
+        "preview": preview,
+    }
+    page = render_html_page("local-file", "local", snapshot)
+    LOCAL_DASHBOARD_FILE.write_text(page, encoding="utf-8")
+    return LOCAL_DASHBOARD_FILE
+
+
+def run_analysis(dataset_raw: str) -> None:
+    dataset_value = dataset_raw.strip() or str(DEFAULT_DATASET)
+    dataset_path = Path(dataset_value).expanduser()
+
+    if dataset_path.suffix.lower() != ".csv":
+        STATE.set_running(False)
+        STATE.set_status("Ошибка: нужно указать путь к CSV-файлу.")
+        return
+
+    STATE.reset_output()
+    STATE.set_running(True)
+    STATE.set_status(f"Выполняется анализ файла: {dataset_path}")
+
+    try:
+        command = resolve_backend_command(dataset_path)
+        env = os.environ.copy()
+        env["PATH"] = ":".join(
+            part for part in [
+                env.get("PATH", ""),
+                str(Path.home() / ".cargo" / "bin"),
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+            ] if part
+        )
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+    except FileNotFoundError:
+        STATE.set_running(False)
+        STATE.set_status("Ошибка: не найден `cargo` и нет готового бинарника `target/debug/bac123`.")
+        return
+    except Exception as exc:  # pragma: no cover
+        STATE.set_running(False)
+        STATE.set_status(f"Ошибка запуска: {exc}")
+        return
+
+    assert process.stdout is not None
+    for line in process.stdout:
+        if _should_show_output_line(line):
+            STATE.append_output(line)
+
+    code = process.wait()
+    STATE.reload_report()
+    STATE.set_running(False)
+    if code == 0:
+        STATE.set_status(f"Анализ завершен успешно. Отчет обновлен: {REPORT_FILE.name}")
+        try:
+            summary, charts = load_dataset_preview(str(dataset_path))
+            STATE.update_preview(summary, charts)
+            STATE.set_preview(load_csv_preview(str(dataset_path)))
+        except Exception:
+            pass
+    else:
+        STATE.set_status(f"Процесс завершился с кодом {code}. Подробности смотрите в выводе процесса.")
+
+
+class RequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path in ("/", "/index.html"):
+            server_url = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
+            page = render_html_page(server_url, "browser", STATE.snapshot())
+            encoded = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+            return
+
+        if self.path.startswith("/state"):
+            payload = json.dumps(STATE.snapshot(), ensure_ascii=False).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if self.path == "/health":
+            payload = b"ok"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_POST(self) -> None:
+        if self.path == "/preview":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+            form = urllib.parse.parse_qs(raw_body)
+            dataset = form.get("dataset", [""])[0]
+            try:
+                summary, charts = load_dataset_preview(dataset)
+                STATE.update_preview(summary, charts)
+                STATE.set_preview(load_csv_preview(dataset))
+                self._write_json({"ok": True, "status": "Графики обновлены."}, HTTPStatus.OK)
+            except Exception as exc:
+                self._write_json({"ok": False, "status": f"Не удалось построить графики: {exc}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/generate":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+            form = urllib.parse.parse_qs(raw_body)
+            dataset = form.get("dataset", [""])[0].strip() or str(DEFAULT_DATASET)
+            path = Path(dataset).expanduser()
+            try:
+                generate_synthetic_csv_file(path)
+                STATE.set_preview(load_csv_preview(str(path)))
+                summary, charts = load_dataset_preview(str(path))
+                STATE.update_preview(summary, charts)
+                self._write_json({"ok": True, "status": f"CSV сгенерирован: {path}"}, HTTPStatus.OK)
+            except Exception as exc:
+                self._write_json({"ok": False, "status": f"Не удалось сгенерировать CSV: {exc}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path != "/run":
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+
+        length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(length).decode("utf-8")
+        form = urllib.parse.parse_qs(raw_body)
+        dataset = form.get("dataset", [""])[0]
+
+        if STATE.snapshot()["running"]:
+            self._write_json({"ok": False, "status": "Анализ уже выполняется."}, HTTPStatus.CONFLICT)
+            return
+
+        thread = threading.Thread(target=run_analysis, args=(dataset,), daemon=True)
+        thread.start()
+        self._write_json({"ok": True, "status": "Запуск анализа начат."}, HTTPStatus.OK)
+
+    def _write_json(self, payload: dict[str, object], status: HTTPStatus) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+def find_free_port(host: str, start_port: int) -> int:
+    for port in range(start_port, start_port + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if sock.connect_ex((host, port)) != 0:
+                return port
+    raise RuntimeError("Не удалось найти свободный порт для web-интерфейса.")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="ML Optimizer GUI")
+    parser.add_argument("--mode", choices=("browser", "local"), default="browser")
+    parser.add_argument("--dataset", default=str(DEFAULT_DATASET))
+    parser.add_argument("--host", default=HOST)
+    parser.add_argument("--port", type=int, default=START_PORT)
+    parser.add_argument("--no-open", action="store_true")
+    args = parser.parse_args()
+
+    if args.mode == "local":
+        dashboard_path = create_local_dashboard(args.dataset)
+        print("Локальный дашборд создан.")
+        print(f"Откройте файл: {dashboard_path}")
+        webbrowser.open(dashboard_path.as_uri())
+        return
+
+    port = args.port if args.port > 0 else find_free_port(args.host, START_PORT)
+    server = ThreadingHTTPServer((args.host, port), RequestHandler)
+    url = f"http://{args.host}:{port}"
+
+    print("ML Optimizer GUI запущен.")
+    print(f"Откройте в браузере: {url}")
+
+    if not args.no_open:
+        threading.Thread(target=lambda: (time.sleep(0.4), webbrowser.open(url)), daemon=True).start()
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nОстановка сервера...")
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

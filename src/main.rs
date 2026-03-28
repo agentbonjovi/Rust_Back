@@ -29,11 +29,31 @@ enum DataType {
     Categorical,
 }
 
+impl DataType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            DataType::Integer => "Integer",
+            DataType::Float => "Float",
+            DataType::Categorical => "Categorical",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Distribution {
     Uniform { min: f64, max: f64 },
     Normal { mean: f64, std: f64 },
     Skewed { alpha: f64 }, // Zipf-like distribution
+}
+
+impl Distribution {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Distribution::Uniform { .. } => "Uniform",
+            Distribution::Normal { .. } => "Normal",
+            Distribution::Skewed { .. } => "Skewed",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -506,6 +526,12 @@ impl DataAnalyzer {
         
         Ok(())
     }
+
+    fn numeric_columns_sorted(&self) -> Vec<String> {
+        let mut columns: Vec<String> = self.metadata.keys().cloned().collect();
+        columns.sort();
+        columns
+    }
     
     // Гистограмма
     fn build_histogram(&self, values: &[f64], num_buckets: usize) -> Vec<HistogramBucket> {
@@ -804,37 +830,47 @@ impl DataAnalyzer {
     // Генерирует набор тестовых предикатов
     fn generate_predicates(&self) -> Vec<Predicate> {
         let mut predicates = Vec::new();
-        let columns = vec!["age", "salary", "score"];
         
-        for &col in &columns {
-            if let Some(metadata) = self.metadata.get(col) {
+        for col in self.numeric_columns_sorted() {
+            if let Some(metadata) = self.metadata.get(&col) {
+                let std = metadata.stats.std.max(0.001);
+                let lt_value = (metadata.stats.mean - std).max(metadata.stats.min);
+                let gt_value = (metadata.stats.mean + std * 0.5).min(metadata.stats.max);
+                let between_low = (metadata.stats.min + std).min(metadata.stats.max);
+                let between_high = (metadata.stats.max - std).max(metadata.stats.min);
+                let (between_start, between_end) = if between_low <= between_high {
+                    (between_low, between_high)
+                } else {
+                    (metadata.stats.min, metadata.stats.max)
+                };
+
                 // Разные типы предикатов
                 predicates.push(Predicate {
-                    column: col.to_string(),
+                    column: col.clone(),
                     operator: Operator::Eq,
                     value: metadata.stats.mean,
                     value2: None,
                 });
                 
                 predicates.push(Predicate {
-                    column: col.to_string(),
+                    column: col.clone(),
                     operator: Operator::Lt,
-                    value: metadata.stats.mean - metadata.stats.std,
+                    value: lt_value,
                     value2: None,
                 });
                 
                 predicates.push(Predicate {
-                    column: col.to_string(),
+                    column: col.clone(),
                     operator: Operator::Gt,
-                    value: metadata.stats.mean + metadata.stats.std * 0.5,
+                    value: gt_value,
                     value2: None,
                 });
                 
                 predicates.push(Predicate {
-                    column: col.to_string(),
+                    column: col.clone(),
                     operator: Operator::Between,
-                    value: metadata.stats.min + metadata.stats.std,
-                    value2: Some(metadata.stats.max - metadata.stats.std),
+                    value: between_start,
+                    value2: Some(between_end),
                 });
             }
         }
@@ -883,6 +919,9 @@ impl DataAnalyzer {
         
         // Тестируем на новых предикатах
         let predicates = self.generate_predicates();
+        if predicates.is_empty() {
+            return Err("Не удалось сгенерировать предикаты: в CSV нет подходящих числовых столбцов".into());
+        }
         let mut results = Vec::new();
         
         println!("\n🔬 Анализ селективности предикатов (с KNN)\n");
@@ -989,6 +1028,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Анализируем данные с KNN
     let mut analyzer = DataAnalyzer::from_csv(path)?;
     let results = analyzer.evaluate_predictors_with_knn()?;
+    let numeric_columns = analyzer.numeric_columns_sorted();
+    if numeric_columns.is_empty() {
+        return Err("В CSV не найдено числовых столбцов для анализа".into());
+    }
     
     // Детальный разбор для нескольких примеров
     println!("\n🔍 Детальный анализ выборочных предикатов:");
@@ -1028,6 +1071,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(report, "Файл данных: {}\n", path.display())?;
     writeln!(report, "KNN параметры: k=5\n")?;
     writeln!(report, "Количество обучающих примеров: {}\n", analyzer.knn_model.knn.training_data.len())?;
+    writeln!(report, "Числовые столбцы: {}\n", numeric_columns.join(", "))?;
+    
+    writeln!(report, "СТАТИСТИКА ПО СТОЛБЦАМ:\n")?;
+    for column_name in &numeric_columns {
+        if let Some(metadata) = analyzer.metadata.get(column_name) {
+            writeln!(report, "{}:", column_name)?;
+            writeln!(report, "   Data type: {}", metadata.data_type.as_str())?;
+            writeln!(report, "   Distribution: {}", metadata.distribution.as_str())?;
+            writeln!(report, "   Count: {}", metadata.stats.count)?;
+            writeln!(report, "   Mean: {:.6}", metadata.stats.mean)?;
+            writeln!(report, "   Std: {:.6}", metadata.stats.std)?;
+            writeln!(report, "   Min: {:.6}", metadata.stats.min)?;
+            writeln!(report, "   Max: {:.6}", metadata.stats.max)?;
+            writeln!(report, "   Unique values: {}", metadata.stats.unique_values)?;
+            writeln!(report, "   Null fraction: {:.6}\n", metadata.stats.null_frac)?;
+        }
+    }
     
     writeln!(report, "СВОДКА ПО ПРЕДИКАТАМ:\n")?;
     for (i, result) in results.iter().enumerate() {

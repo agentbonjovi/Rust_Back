@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML Optimizer GUI</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffaf4;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --accent: #0f766e;
+      --accent-2: #b45309;
+      --border: #d6c7b6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(180, 83, 9, 0.12), transparent 28%),
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 32%),
+        var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 18px 36px;
+    }
+    .hero {
+      margin-bottom: 18px;
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 250, 244, 0.9);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 14px 45px rgba(31, 41, 55, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 5vw, 44px);
+      line-height: 1.05;
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .stat {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fff, #f9f2e9);
+    }
+    .stat strong {
+      display: block;
+      font-size: 26px;
+      line-height: 1.1;
+      margin-top: 6px;
+    }
+    .stat span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 10px 32px rgba(31, 41, 55, 0.05);
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    input[type=text] {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      font-size: 15px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 14px;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: .55; cursor: default; transform: none; }
+    .primary { background: var(--accent); color: #fff; }
+    .secondary { background: #efe5d7; color: var(--ink); }
+    .status {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #f6efe6;
+      color: var(--ink);
+      font-size: 14px;
+      min-height: 52px;
+    }
+    .meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .panel-title {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    pre {
+      margin: 0;
+      min-height: 360px;
+      max-height: 520px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid #d9d9d9;
+      background: #1e1e1e;
+      color: #f8fafc;
+      font: 13px/1.45 "SFMono-Regular", Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .report {
+      background: #fffdf8;
+      color: #1f2937;
+      border-color: #e7dccf;
+    }
+    .hint {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .chart-box {
+      min-height: 320px;
+    }
+    .chart-box svg {
+      width: 100%;
+      height: 220px;
+      display: block;
+      overflow: visible;
+    }
+    .chart-caption {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .empty-chart {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      background: #fff;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .charts { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>ML Optimizer GUI</h1>
+      <p class="sub">Стабильный интерфейс на Python без tkinter: запускает Rust-анализатор и показывает отчет в браузере.</p>
+    </section>
+
+    <section class="card" style="margin-bottom: 18px;">
+      <label for="dataset">CSV-файл для анализа</label>
+      <input id="dataset" type="text" value="/Users/r2d2/Documents/GitHub/Rust_Back/synthetic_data.csv" spellcheck="false">
+      <div class="row">
+        <button class="primary" id="runBtn">Запустить анализ</button>
+        <button class="secondary" id="defaultBtn">Подставить synthetic_data.csv</button>
+        <button class="secondary" id="refreshBtn">Обновить данные</button>
+      </div>
+      <div class="status" id="status">Загрузка состояния...</div>
+      <div class="meta">Если файл не существует, Rust-приложение само сгенерирует синтетический CSV.</div>
+      <div class="hint" id="modeHint">Окно работает по адресу <code>local-file</code>. Можно открыть и вручную, если браузер не запустился автоматически.</div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="charts">
+      <div class="card chart-box">
+        <h2 class="panel-title">Возраст</h2>
+        <div id="ageChart"></div>
+        <div class="chart-caption" id="ageCaption"></div>
+      </div>
+      <div class="card chart-box">
+        <h2 class="panel-title">Зарплата</h2>
+        <div id="salaryChart"></div>
+        <div class="chart-caption" id="salaryCaption"></div>
+      </div>
+      <div class="card chart-box">
+        <h2 class="panel-title">Отделы</h2>
+        <div id="deptChart"></div>
+        <div class="chart-caption" id="deptCaption"></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2 class="panel-title">Вывод процесса</h2>
+        <pre id="output">Ожидание запуска...</pre>
+      </div>
+      <div class="card">
+        <h2 class="panel-title">Отчет</h2>
+        <pre class="report" id="report">Отчет будет показан здесь.</pre>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const datasetInput = document.getElementById("dataset");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const reportEl = document.getElementById("report");
+    const statsEl = document.getElementById("stats");
+    const runBtn = document.getElementById("runBtn");
+    const defaultBtn = document.getElementById("defaultBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const defaultDataset = "/Users/r2d2/Documents/GitHub/Rust_Back/synthetic_data.csv";
+    const appMode = "local";
+    const initialState = {"running": false, "status": "Локальный дашборд построен по текущему CSV.", "output": "Standalone-режим показывает локальный снимок данных и отчета.\nДля интерактивного запуска Rust-анализа используйте browser mode.", "report": "ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT\n================================================\n\nДата: 2026-03-28 12:27:40\nФайл данных: /Users/r2d2/Documents/GitHub/Rust_Back/synthetic_data.csv\n\nKNN параметры: k=5\n\nКоличество обучающих примеров: 480\n\nСВОДКА ПО ПРЕДИКАТАМ:\n\n1. Predicate { column: \"age\", operator: Eq, value: 35.01490020751953, value2: None }\n   Actual: 0.000000, KNN: 0.039002, Hist: 0.042082, Approx: 0.010000\n   Error KNN: 0.039002, Error Hist: 0.042082, Error Approx: 0.010000\n   Recommended scan: Index Scan\n\n2. Predicate { column: \"age\", operator: Lt, value: 25.073280996269087, value2: None }\n   Actual: 0.169900, KNN: 0.186029, Hist: 0.167946, Approx: 0.330000\n   Error KNN: 0.016129, Error Hist: 0.001954, Error Approx: 0.160100\n   Recommended scan: Index Scan\n\n3. Predicate { column: \"age\", operator: Gt, value: 39.98570981314475, value2: None }\n   Actual: 0.328100, KNN: 0.326727, Hist: 0.309898, Approx: 0.330000\n   Error KNN: 0.001373, Error Hist: 0.018202, Error Approx: 0.001900\n   Recommended scan: Seq Scan\n\n4. Predicate { column: \"age\", operator: Between, value: 7.941619211250444, value2: Some(61.05838078874956) }\n   Actual: 0.993200, KNN: 0.602491, Hist: 0.992237, Approx: 0.250000\n   Error KNN: 0.390709, Error Hist: 0.000963, Error Approx: 0.743200\n   Recommended scan: Seq Scan\n\n5. Predicate { column: \"salary\", operator: Eq, value: 520285.90625, value2: None }\n   Actual: 0.000000, KNN: 0.000143, Hist: 0.000000, Approx: 0.010000\n   Error KNN: 0.000143, Error Hist: 0.000000, Error Approx: 0.010000\n   Recommended scan: Index Scan\n\n6. Predicate { column: \"salary\", operator: Lt, value: -7290150.027998997, value2: None }\n   Actual: 0.000000, KNN: 0.154317, Hist: 0.000000, Approx: 0.330000\n   Error KNN: 0.154317, Error Hist: 0.000000, Error Approx: 0.330000\n   Recommended scan: Index Scan\n\n7. Predicate { column: \"salary\", operator: Gt, value: 4425503.873374498, value2: None }\n   Actual: 0.010400, KNN: 0.161155, Hist: 0.870065, Approx: 0.330000\n   Error KNN: 0.150755, Error Hist: 0.859665, Error Approx: 0.319600\n   Recommended scan: Index Scan\n\n8. Predicate { column: \"salary\", operator: Between, value: 7860438.934248997, value2: Some(664586722.065751) }\n   Actual: 0.005800, KNN: 0.106479, Hist: 0.768038, Approx: 0.250000\n   Error KNN: 0.100679, Error Hist: 0.762238, Error Approx: 0.244200\n   Recommended scan: Index Scan\n\n9. Predicate { column: \"score\", operator: Eq, value: 49.93186950683594, value2: None }\n   Actual: 0.000000, KNN: 0.000223, Hist: 0.008902, Approx: 0.010000\n   Error KNN: 0.000223, Error Hist: 0.008902, Error Approx: 0.010000\n   Recommended scan: Index Scan\n\n10. Predicate { column: \"score\", operator: Lt, value: 21.07570618561297, value2: None }\n   Actual: 0.209400, KNN: 0.202055, Hist: 0.209307, Approx: 0.330000\n   Error KNN: 0.007345, Error Hist: 0.000093, Error Approx: 0.120600\n   Recommended scan: Index Scan\n\n11. Predicate { column: \"score\", operator: Gt, value: 64.35995116744742, value2: None }\n   Actual: 0.354900, KNN: 0.291986, Hist: 0.354460, Approx: 0.330000\n   Error KNN: 0.062914, Error Hist: 0.000440, Error Approx: 0.024900\n   Recommended scan: Bitmap Scan\n\n12. Predicate { column: \"score\", operator: Between, value: 28.85616332122297, value2: Some(71.12383667877704) }\n   Actual: 0.419600, KNN: 0.374415, Hist: 0.420912, Approx: 0.250000\n   Error KNN: 0.045185, Error Hist: 0.001312, Error Approx: 0.169600\n   Recommended scan: Seq Scan\n\n\nИТОГОВАЯ СТАТИСТИКА:\nСредняя ошибка KNN: 0.080731\nСредняя ошибка гистограммы: 0.141321\nСредняя ошибка приближенной оценки: 0.178675\n", "summary": {"row_count": 5000, "age_mean": 34.9, "salary_mean": 543051.8, "salary_max": 672397158.0, "score_mean": 49.4}, "charts": {"age_histogram": [{"label": "0-9", "count": 13}, {"label": "9-18", "count": 156}, {"label": "18-27", "count": 835}, {"label": "27-36", "count": 1618}, {"label": "36-44", "count": 1534}, {"label": "44-53", "count": 687}, {"label": "53-62", "count": 139}, {"label": "62-71", "count": 18}], "salary_histogram": [{"label": "0-67239716", "count": 4997}, {"label": "67239716-134479432", "count": 1}, {"label": "134479432-201719147", "count": 0}, {"label": "201719147-268958863", "count": 1}, {"label": "268958863-336198579", "count": 0}, {"label": "336198579-403438295", "count": 0}, {"label": "403438295-470678011", "count": 0}, {"label": "470678011-537917726", "count": 0}, {"label": "537917726-605157442", "count": 0}, {"label": "605157442-672397158", "count": 1}], "department_top": [{"label": "2", "count": 278}, {"label": "17", "count": 274}, {"label": "20", "count": 274}, {"label": "19", "count": 272}, {"label": "14", "count": 271}, {"label": "18", "count": 268}]}};
+
+    function esc(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function numberFmt(value) {
+      return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(value);
+    }
+
+    function renderStats(summary) {
+      if (!summary) {
+        statsEl.innerHTML = "";
+        return;
+      }
+      const items = [
+        ["Строк", numberFmt(summary.row_count), "загружено для графиков"],
+        ["Возраст", numberFmt(summary.age_mean), "среднее значение"],
+        ["Зарплата", numberFmt(summary.salary_mean), "средняя по выборке"],
+        ["Score", numberFmt(summary.score_mean), "средний балл"]
+      ];
+      statsEl.innerHTML = items.map(([label, value, hint]) => `
+        <div class="stat">
+          <span>${esc(label)}</span>
+          <strong>${esc(value)}</strong>
+          <span>${esc(hint)}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderHistogram(targetId, captionId, bins, title, options = {}) {
+      const host = document.getElementById(targetId);
+      const caption = document.getElementById(captionId);
+      if (!bins || !bins.length) {
+        host.innerHTML = '<div class="empty-chart">Недостаточно данных</div>';
+        caption.textContent = "";
+        return;
+      }
+      const width = 320;
+      const height = 220;
+      const transform = options.scale === "sqrt" ? Math.sqrt : (value) => value;
+      const transformed = bins.map(bin => transform(bin.count));
+      const max = Math.max(...transformed, 1);
+      const gap = 8;
+      const barWidth = (width - gap * (bins.length - 1)) / bins.length;
+      const bars = bins.map((bin, index) => {
+        const x = index * (barWidth + gap);
+        const barHeight = (transformed[index] / max) * 170;
+        const y = height - barHeight - 24;
+        return `
+          <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="8" fill="#0f766e" opacity="${0.55 + (index / bins.length) * 0.35}"></rect>
+          <text x="${x + barWidth / 2}" y="${height - 8}" text-anchor="middle" font-size="10" fill="#6b7280">${esc(bin.label)}</text>
+        `;
+      }).join("");
+      const axis = options.axisMax ? `
+        <text x="0" y="12" font-size="10" fill="#6b7280">${esc(numberFmt(options.axisMin || 0))}</text>
+        <text x="${width / 2}" y="12" text-anchor="middle" font-size="10" fill="#6b7280">${esc(numberFmt((options.axisMax || 0) / 2))}</text>
+        <text x="${width}" y="12" text-anchor="end" font-size="10" fill="#6b7280">${esc(numberFmt(options.axisMax))}</text>
+      ` : "";
+      host.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(title)}">
+          ${axis}
+          <line x1="0" y1="${height - 24}" x2="${width}" y2="${height - 24}" stroke="#d6c7b6" />
+          ${bars}
+        </svg>
+      `;
+      const peak = bins.reduce((best, bin) => bin.count > best.count ? bin : best, bins[0]);
+      const scaleHint = options.scale === "sqrt" ? "Высота столбцов сглажена, чтобы длинный хвост не ломал график." : "";
+      caption.textContent = `Диапазон: ${options.axisMin ?? "auto"}-${options.axisMax ? numberFmt(options.axisMax) : "auto"}. Пиковый интервал: ${peak.label}, записей: ${numberFmt(peak.count)}. ${scaleHint}`.trim();
+    }
+
+    function renderDepartmentChart(targetId, captionId, items) {
+      const host = document.getElementById(targetId);
+      const caption = document.getElementById(captionId);
+      if (!items || !items.length) {
+        host.innerHTML = '<div class="empty-chart">Недостаточно данных</div>';
+        caption.textContent = "";
+        return;
+      }
+      const width = 320;
+      const rowHeight = 28;
+      const height = items.length * rowHeight + 20;
+      const max = Math.max(...items.map(item => item.count), 1);
+      const rows = items.map((item, index) => {
+        const y = index * rowHeight + 6;
+        const lineWidth = (item.count / max) * 220;
+        return `
+          <text x="0" y="${y + 12}" font-size="11" fill="#6b7280">D${esc(item.label)}</text>
+          <rect x="42" y="${y}" width="${lineWidth}" height="14" rx="7" fill="#b45309"></rect>
+          <text x="${48 + lineWidth}" y="${y + 12}" font-size="11" fill="#1f2937">${esc(item.count)}</text>
+        `;
+      }).join("");
+      host.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Распределение по отделам">${rows}</svg>`;
+      caption.textContent = `Показаны ${items.length} самых наполненных отделов.`;
+    }
+
+    function applyState(data) {
+      statusEl.textContent = data.status;
+      outputEl.textContent = data.output || "Ожидание запуска...";
+      reportEl.textContent = data.report || "Отчет пока не найден.";
+      runBtn.disabled = data.running;
+      renderStats(data.summary);
+      renderHistogram("ageChart", "ageCaption", data.charts?.age_histogram, "Гистограмма возраста");
+      renderHistogram(
+        "salaryChart",
+        "salaryCaption",
+        data.charts?.salary_histogram,
+        "Гистограмма зарплат",
+        { scale: "sqrt", axisMin: 0, axisMax: data.summary?.salary_max || 0 }
+      );
+      renderDepartmentChart("deptChart", "deptCaption", data.charts?.department_top);
+    }
+
+    async function fetchState() {
+      if (appMode === "local") {
+        applyState(initialState);
+        return;
+      }
+      const response = await fetch("/state", { cache: "no-store" });
+      const data = await response.json();
+      applyState(data);
+    }
+
+    async function runAnalysis() {
+      if (appMode === "local") {
+        statusEl.textContent = "В локальном standalone-режиме live-запуск недоступен. Используйте browser mode.";
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      await fetchState();
+    }
+
+    async function loadPreview() {
+      if (appMode === "local") {
+        applyState(initialState);
+        return;
+      }
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      await fetchState();
+    }
+
+    runBtn.addEventListener("click", runAnalysis);
+    defaultBtn.addEventListener("click", () => {
+      datasetInput.value = defaultDataset;
+      loadPreview();
+    });
+    refreshBtn.addEventListener("click", loadPreview);
+
+    if (appMode === "local") {
+      runBtn.disabled = true;
+      document.getElementById("modeHint").textContent = "Это локальный standalone-дашборд без сервера. Для интерактивного запуска анализа используйте browser mode.";
+      fetchState();
+    } else {
+      fetchState().then(loadPreview);
+      setInterval(fetchState, 1200);
+    }
+  </script>
+</body>
+</html>
