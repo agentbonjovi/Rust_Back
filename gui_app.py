@@ -604,6 +604,14 @@ HTML_PAGE = """<!doctype html>
       loadPreview();
     });
     refreshBtn.addEventListener("click", loadPreview);
+    // авто-обновление превью при ручном изменении пути (debounce ~600 мс),
+    // чтобы пользователь не нажимал "Обновить данные" каждый раз
+    let datasetDebounce = null;
+    datasetInput.addEventListener("input", () => {
+      if (appMode === "local") return;
+      clearTimeout(datasetDebounce);
+      datasetDebounce = setTimeout(loadPreview, 600);
+    });
     filePicker.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
       await uploadSelectedFile(file);
@@ -631,6 +639,7 @@ class AppState:
         self.running = False
         self.status = "Готово к запуску анализа."
         self.output = ""
+        self.report_mtime: float = 0.0
         self.report = self._read_report()
         self.summary = {}
         self.charts = {}
@@ -639,11 +648,32 @@ class AppState:
 
     def _read_report(self) -> str:
         if REPORT_FILE.exists():
+            try:
+                self.report_mtime = REPORT_FILE.stat().st_mtime
+            except OSError:
+                self.report_mtime = 0.0
             return REPORT_FILE.read_text(encoding="utf-8")
+        self.report_mtime = 0.0
         return "Отчет пока не найден.\n\nЗапустите анализ, чтобы создать новый отчет."
+
+    def _refresh_report_if_changed(self) -> bool:
+        """Если файл отчёта на диске новее запомненного — перечитываем его.
+
+        Это позволяет UI автоматически подхватывать новый отчёт даже когда
+        бинарь запускают мимо GUI (например, из терминала или сетапа).
+        """
+        try:
+            mtime = REPORT_FILE.stat().st_mtime if REPORT_FILE.exists() else 0.0
+        except OSError:
+            mtime = 0.0
+        if mtime != self.report_mtime:
+            self.report = self._read_report()
+            return True
+        return False
 
     def snapshot(self) -> dict[str, object]:
         with self.lock:
+            self._refresh_report_if_changed()
             return {
                 "running": self.running,
                 "status": self.status,
