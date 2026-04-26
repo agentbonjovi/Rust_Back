@@ -31,15 +31,34 @@ cargo --version | Out-Null
 Ok ("rustc: " + (rustc --version))
 
 # --- Python ---
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
-if (-not $python) { Fail "Не найден python. Установите Python >= 3.9" }
-$ver = & $python.Source -c "import sys; print('%d.%d' % sys.version_info[:2])"
-$parts = $ver.Split(".")
-if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 9)) {
-    Fail "Найден Python $ver, нужен >= 3.9"
+# Перебираем кандидатов: свежие версии сначала, потом общие имена.
+$candidates = @("python3.13", "python3.12", "python3.11", "python3.10", "python3.9", "python3", "python")
+$python = $null
+$pickedVersion = $null
+foreach ($name in $candidates) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if (-not $cmd) { continue }
+    $v = & $cmd.Source -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+    if (-not $v) { continue }
+    $parts = $v.Split(".")
+    if ([int]$parts[0] -gt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 9)) {
+        $python = $cmd
+        $pickedVersion = $v
+        break
+    }
 }
-Ok "Python $ver OK"
+if (-not $python) { Fail "Не найден Python >= 3.9. Установите его с python.org" }
+Ok "Python $pickedVersion OK ($($python.Source))"
+
+# Smoke-проверка: импортируется ли gui_app под этим Python (на 3.13
+# удалённый модуль cgi или distutils выскочит здесь, ещё до запуска).
+$importErr = & $python.Source -c "import gui_app" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Warn "gui_app.py не импортируется под $($python.Source):"
+    Write-Host $importErr -ForegroundColor Yellow
+    Fail "Исправьте импорт-ошибку и повторите setup.ps1."
+}
+Ok "gui_app.py импортируется без ошибок."
 
 # --- Python deps ---
 if (Test-Path requirements.txt) {

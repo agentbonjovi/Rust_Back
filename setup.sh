@@ -86,25 +86,42 @@ ensure_rust_toolchain() {
 
 # --- 2. Python ------------------------------------------------------------
 ensure_python() {
+    # Перебираем кандидатов в порядке наиболее распространённых имён:
+    # python3.X (свежие версии) сначала, общие имена в конце. На macOS
+    # с Homebrew Python 3.13 ставится как python3.13. Берём то, что
+    # удовлетворяет минимальной требуемой версии.
+    local candidates=(python3.13 python3.12 python3.11 python3.10 python3.9 python3 python)
     local py_bin=""
-    for candidate in python3 python; do
-        if require_cmd "$candidate"; then
+    local picked_version=""
+    for candidate in "${candidates[@]}"; do
+        if ! require_cmd "$candidate"; then continue; fi
+        local v
+        v="$("$candidate" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+        [ -z "$v" ] && continue
+        local maj="${v%%.*}"
+        local mn="${v##*.}"
+        if [ "$maj" -gt "$PYTHON_MIN_MAJOR" ] || { [ "$maj" -eq "$PYTHON_MIN_MAJOR" ] && [ "$mn" -ge "$PYTHON_MIN_MINOR" ]; }; then
             py_bin="$candidate"
+            picked_version="$v"
             break
         fi
     done
     if [ -z "$py_bin" ]; then
-        fail "Не найден python3. Установите Python >= ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR} и повторите запуск."
+        fail "Не найден Python >= ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}. Установите его (например, через 'brew install python@3.13' или с python.org)."
     fi
-
-    local version
-    version="$($py_bin -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-    local major="${version%%.*}"
-    local minor="${version##*.}"
-    if [ "$major" -lt "$PYTHON_MIN_MAJOR" ] || { [ "$major" -eq "$PYTHON_MIN_MAJOR" ] && [ "$minor" -lt "$PYTHON_MIN_MINOR" ]; }; then
-        fail "Найден Python $version, нужен >= ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}"
+    ok "Python $picked_version OK ($("$py_bin" -c 'import sys; print(sys.executable)'))"
+    # Smoke-проверка: импортируется ли наш gui_app под этим Python.
+    # Если на 3.13 в коде остался удалённый stdlib-модуль (cgi/distutils
+    # и т.п.), здесь сразу будет видно ImportError, и пользователь не
+    # увидит его уже после самого запуска.
+    if ! "$py_bin" -c "import gui_app" 2>/tmp/gui_app_import.err; then
+        warn "gui_app.py не импортируется под $py_bin:"
+        sed 's/^/      /' /tmp/gui_app_import.err >&2
+        rm -f /tmp/gui_app_import.err
+        fail "Исправьте импорт-ошибку и повторите setup.sh."
     fi
-    ok "Python $version OK ($($py_bin -c 'import sys; print(sys.executable)'))"
+    rm -f /tmp/gui_app_import.err
+    ok "gui_app.py импортируется без ошибок."
     export PROJECT_PYTHON="$py_bin"
 }
 

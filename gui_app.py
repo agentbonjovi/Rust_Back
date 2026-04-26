@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import cgi
+from email.parser import BytesParser
+from email.policy import default as _email_default_policy
 import html
 import json
 import csv
@@ -1339,6 +1340,43 @@ def generate_synthetic_csv_file(output_path: Path, num_rows: int = 10_000) -> No
             writer.writerow([index, age, salary, department_id, score, experience])
 
 
+def parse_multipart_form(body: bytes, content_type: str) -> dict[str, tuple[str | None, bytes]]:
+    """Парсит multipart/form-data → {field_name: (filename | None, raw_bytes)}.
+
+    Замена устаревшему cgi.FieldStorage (модуль cgi удалён в Python 3.13).
+    Использует email.parser из stdlib — работает на 3.9+ без внешних
+    зависимостей. Подразумевается, что тело умещается в память (для
+    нашего CSV-аплоадера это ок: GUI ограничен датасетами в МБ-диапазоне).
+    """
+    # Конструируем "псевдо-email" с заголовком Content-Type, чтобы
+    # email-парсер увидел multipart-границу и распознал части.
+    pseudo = b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + body
+    msg = BytesParser(policy=_email_default_policy).parsebytes(pseudo)
+    fields: dict[str, tuple[str | None, bytes]] = {}
+    if not msg.is_multipart():
+        return fields
+    for part in msg.iter_parts():
+        cd = part.get("Content-Disposition", "")
+        if not cd:
+            continue
+        # Разбираем Content-Disposition: form-data; name="x"; filename="y.csv"
+        name: str | None = None
+        filename: str | None = None
+        for piece in cd.split(";"):
+            piece = piece.strip()
+            if piece.startswith("name="):
+                name = piece[5:].strip().strip('"')
+            elif piece.startswith("filename="):
+                filename = piece[9:].strip().strip('"')
+        if not name:
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            payload = b""
+        fields[name] = (filename, payload)
+    return fields
+
+
 def save_uploaded_csv(filename: str, content: bytes) -> Path:
     safe_name = Path(filename or "uploaded.csv").name
     stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(safe_name).stem) or "uploaded"
@@ -1670,24 +1708,17 @@ class RequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             try:
-                form = cgi.FieldStorage(
-                    fp=self.rfile,
-                    headers=self.headers,
-                    environ={
-                        "REQUEST_METHOD": "POST",
-                        "CONTENT_TYPE": content_type,
-                        "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
-                    },
-                )
-                upload_field = form["dataset_file"] if "dataset_file" in form else None
-                if upload_field is None or not getattr(upload_field, "file", None):
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                body = self.rfile.read(length) if length > 0 else b""
+                fields = parse_multipart_form(body, content_type)
+                upload = fields.get("dataset_file")
+                if upload is None:
                     raise ValueError("Файл не был передан.")
 
-                filename = upload_field.filename or "uploaded.csv"
+                filename, content = upload
+                filename = filename or "uploaded.csv"
                 if not filename.lower().endswith(".csv"):
                     raise ValueError("Нужно выбрать CSV-файл.")
-
-                content = upload_field.file.read()
                 if not content:
                     raise ValueError("Выбран пустой файл.")
 
