@@ -42,26 +42,38 @@ HTML_PAGE = """<!doctype html>
   <title>ML Optimizer</title>
   <style>
     :root {
-      --bg: #f4efe7;
-      --panel: #fffaf4;
-      --ink: #1f2937;
-      --muted: #6b7280;
-      --accent: #0f766e;
-      --accent-2: #b45309;
-      --accent-3: #2563eb;
-      --accent-4: #d97706;
-      --accent-5: #7c3aed;
-      --accent-6: #be123c;
-      --border: #d6c7b6;
+      --bg: #eef2f7;
+      --bg-2: #e6ecf4;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --accent: #6366f1;          /* indigo  */
+      --accent-soft: #eef0ff;
+      --accent-2: #06b6d4;         /* cyan    */
+      --accent-3: #10b981;         /* emerald */
+      --accent-4: #f59e0b;         /* amber   */
+      --accent-5: #8b5cf6;         /* violet  */
+      --accent-6: #ef4444;         /* red     */
+      --border: #dbe2ec;
+      --border-strong: #c7d0dc;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .06);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, .06), 0 10px 28px rgba(15, 23, 42, .08);
+      --shadow-lg: 0 12px 40px rgba(99, 102, 241, .18);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "SF Pro Text", "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top right, rgba(180, 83, 9, 0.12), transparent 28%),
-        radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 32%),
-        var(--bg);
+      font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      background-color: var(--bg);
+      /* лёгкая точечная сетка + два мягких градиентных пятна сверху */
+      background-image:
+        radial-gradient(circle at 12% 8%, rgba(99, 102, 241, .14), transparent 38%),
+        radial-gradient(circle at 92% 6%, rgba(6, 182, 212, .12), transparent 36%),
+        radial-gradient(rgba(15, 23, 42, .055) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 22px 22px;
+      background-position: 0 0, 0 0, 0 0;
+      background-attachment: fixed;
       color: var(--ink);
     }
     .wrap {
@@ -71,17 +83,22 @@ HTML_PAGE = """<!doctype html>
     }
     .hero {
       margin-bottom: 18px;
-      padding: 20px 24px;
+      padding: 22px 26px;
       border: 1px solid var(--border);
       border-radius: 22px;
-      background: rgba(255, 250, 244, 0.9);
-      backdrop-filter: blur(6px);
-      box-shadow: 0 14px 45px rgba(31, 41, 55, 0.06);
+      background: linear-gradient(135deg, rgba(255, 255, 255, .94) 0%, rgba(238, 240, 255, .9) 100%);
+      backdrop-filter: blur(8px);
+      box-shadow: var(--shadow-md);
     }
     h1 {
       margin: 0 0 8px;
-      font-size: clamp(30px, 5vw, 44px);
+      font-size: clamp(28px, 4.4vw, 40px);
       line-height: 1.05;
+      letter-spacing: -0.02em;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
     }
     .grid {
       display: grid;
@@ -96,33 +113,82 @@ HTML_PAGE = """<!doctype html>
     }
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 14px;
+      /* 6 тайлов в одну строку; на узких экранах сворачивается в 3, потом в 2 */
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
     }
     .stat {
-      padding: 14px;
+      position: relative;
+      padding: 12px 14px 10px;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      background: linear-gradient(180deg, #fff, #f9f2e9);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #ffffff 0%, var(--panel-soft) 100%);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+      cursor: default;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    /* цветная полоска сверху — у каждого тайла свой акцент */
+    .stat::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 3px;
+      background: var(--tile-color, var(--accent));
+      opacity: .8;
+      transition: opacity .18s ease, height .18s ease;
+    }
+    .stat:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--tile-color, var(--accent));
+      background: linear-gradient(180deg, #ffffff 0%, var(--accent-soft) 100%);
+    }
+    .stat:hover::before { height: 4px; opacity: 1; }
+    .stat .label {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .stat strong {
       display: block;
-      font-size: 26px;
-      line-height: 1.1;
-      margin-top: 6px;
+      font-size: 22px;
+      line-height: 1.15;
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+      color: var(--ink);
     }
-    .stat span {
+    .stat .hint {
       color: var(--muted);
-      font-size: 13px;
+      font-size: 11px;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (max-width: 1100px) {
+      .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 20px;
+      border-radius: 18px;
       padding: 18px;
-      box-shadow: 0 10px 32px rgba(31, 41, 55, 0.05);
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow .18s ease, border-color .18s ease;
     }
+    .card:hover { box-shadow: var(--shadow-md); }
     label {
       display: block;
       font-size: 14px;
@@ -154,13 +220,24 @@ HTML_PAGE = """<!doctype html>
     }
     button:hover { transform: translateY(-1px); }
     button:disabled { opacity: .55; cursor: default; transform: none; }
-    .primary { background: var(--accent); color: #fff; }
-    .secondary { background: #efe5d7; color: var(--ink); }
+    .primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-5));
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, .25);
+    }
+    .primary:hover { box-shadow: 0 6px 18px rgba(99, 102, 241, .35); }
+    .secondary {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--border);
+    }
+    .secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
     .status {
       margin-top: 16px;
       padding: 14px 16px;
       border-radius: 14px;
-      background: #f6efe6;
+      background: linear-gradient(135deg, var(--accent-soft), #fff);
+      border: 1px solid var(--border);
       color: var(--ink);
       font-size: 14px;
       min-height: 52px;
@@ -191,9 +268,9 @@ HTML_PAGE = """<!doctype html>
       tab-size: 2;
     }
     .report {
-      background: #fffdf8;
-      color: #1f2937;
-      border-color: #e7dccf;
+      background: var(--panel-soft);
+      color: var(--ink);
+      border-color: var(--border);
     }
     /* "Вывод процесса" и "Отчёт" — каждый во всю ширину, друг под другом.
        Текст моноширинный и широкий, в две колонки выглядит сжатым. */
@@ -240,23 +317,32 @@ HTML_PAGE = """<!doctype html>
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: background .12s ease, transform .12s ease;
+      transition: background .12s ease, transform .12s ease, border-color .12s ease, color .12s ease;
     }
-    .tool-btn:hover { background: #f6efe6; transform: translateY(-1px); }
-    .tool-btn.copied { background: #d4edda; border-color: #b5d9bc; }
+    .tool-btn:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-1px);
+    }
+    .tool-btn.copied {
+      background: #d1fae5;
+      border-color: var(--accent-3);
+      color: #065f46;
+    }
     /* Подсветка строк во всех таблицах */
-    tbody tr { transition: background .1s ease; }
-    tbody tr:hover { background: #fbf4ea; }
+    tbody tr { transition: background .12s ease; }
+    tbody tr:hover { background: var(--accent-soft); }
     /* Таблица "Приоритеты признаков KNN" */
     .fi-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .fi-table th, .fi-table td {
       padding: 10px 12px;
-      border-bottom: 1px solid #eee3d4;
+      border-bottom: 1px solid var(--border);
       text-align: left;
       white-space: nowrap;
     }
     .fi-table th {
-      background: #fbf4ea;
+      background: var(--panel-soft);
       font-weight: 700;
       font-size: 12px;
       text-transform: uppercase;
@@ -264,10 +350,12 @@ HTML_PAGE = """<!doctype html>
       color: var(--muted);
     }
     .fi-table code {
-      background: #f6efe6;
+      background: var(--accent-soft);
+      color: var(--accent);
       padding: 2px 8px;
       border-radius: 6px;
       font-size: 12.5px;
+      font-weight: 600;
     }
     .fi-table tr.fi-top td { font-weight: 700; }
     .fi-table tr.fi-top td:first-child {
@@ -298,17 +386,19 @@ HTML_PAGE = """<!doctype html>
     }
     .fi-legend {
       margin: 0 0 14px;
-      padding: 12px 14px;
-      background: #f6efe6;
-      border: 1px solid #eadfd0;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, var(--accent-soft), #fff);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
       border-radius: 12px;
       font-size: 13px;
       color: var(--ink);
-      line-height: 1.5;
+      line-height: 1.55;
     }
     .fi-legend strong { color: var(--accent); }
     .fi-legend code {
       background: #fff;
+      border: 1px solid var(--border);
       padding: 1px 6px;
       border-radius: 5px;
       font-size: 12.5px;
@@ -317,15 +407,16 @@ HTML_PAGE = """<!doctype html>
     .fi-bar-track {
       width: 100%;
       height: 10px;
-      background: #f0e6d6;
+      background: var(--bg-2);
       border-radius: 999px;
       overflow: hidden;
     }
     .fi-bar-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--accent), #ff9c5a);
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
       border-radius: 999px;
       transition: width .4s ease;
+      box-shadow: 0 1px 4px rgba(99, 102, 241, .35);
     }
     .fi-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
     .hint {
@@ -349,14 +440,18 @@ HTML_PAGE = """<!doctype html>
     }
     th, td {
       padding: 10px 12px;
-      border-bottom: 1px solid #eee3d4;
+      border-bottom: 1px solid var(--border);
       text-align: left;
       white-space: nowrap;
     }
     th {
       position: sticky;
       top: 0;
-      background: #fbf4ea;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .03em;
+      text-transform: uppercase;
       z-index: 1;
     }
     .chart-box svg {
@@ -367,11 +462,11 @@ HTML_PAGE = """<!doctype html>
     }
     .bar-label {
       font-size: 11px;
-      fill: #6b7280;
+      fill: #64748b;
     }
     .bar-value {
       font-size: 11px;
-      fill: #1f2937;
+      fill: #0f172a;
       font-weight: 700;
     }
     .chart-caption {
@@ -561,19 +656,20 @@ HTML_PAGE = """<!doctype html>
       const rustMs = summary.rust_ms;
       const pythonMs = summary.python_ms;
       const speedup = (rustMs && pythonMs) ? (pythonMs / rustMs) : null;
+      // Каждому тайлу — свой акцент-цвет из CSS-переменных
       const items = [
-        ["Числ. столбцов", numberFmt(summary.numeric_columns || 0), "найдено в CSV"],
-        ["Предикатов", numberFmt(summary.predicate_count || 0), "проверено backend"],
-        ["KNN error", numberFmt(summary.avg_error_knn || 0), "средняя ошибка"],
-        ["Время Rust, мс", rustMs ? numberFmt(rustMs) : "—", "последний запуск"],
-        ["Время Python, мс", pythonMs ? numberFmt(pythonMs) : "—", "последний запуск"],
-        ["Ускорение Rust", speedup ? "x" + speedup.toFixed(2) : "—", "Python / Rust"]
+        { label: "Столбцов",        value: numberFmt(summary.numeric_columns || 0), hint: "числовых в CSV",  color: "var(--accent)" },
+        { label: "Предикатов",      value: numberFmt(summary.predicate_count || 0), hint: "проверено",       color: "var(--accent-2)" },
+        { label: "Ошибка KNN",      value: numberFmt(summary.avg_error_knn || 0),   hint: "средняя",         color: "var(--accent-3)" },
+        { label: "Rust, мс",        value: rustMs ? numberFmt(rustMs) : "—",        hint: "последний запуск", color: "var(--accent-4)" },
+        { label: "Python, мс",      value: pythonMs ? numberFmt(pythonMs) : "—",    hint: "последний запуск", color: "var(--accent-5)" },
+        { label: "Ускорение Rust",  value: speedup ? "×" + speedup.toFixed(2) : "—", hint: "Python / Rust",   color: "var(--accent-6)" },
       ];
-      statsEl.innerHTML = items.map(([label, value, hint]) => `
-        <div class="stat">
-          <span>${esc(label)}</span>
-          <strong>${esc(value)}</strong>
-          <span>${esc(hint)}</span>
+      statsEl.innerHTML = items.map(it => `
+        <div class="stat" style="--tile-color: ${it.color}" title="${esc(it.label)} — ${esc(it.hint)}">
+          <span class="label">${esc(it.label)}</span>
+          <strong>${esc(it.value)}</strong>
+          <span class="hint">${esc(it.hint)}</span>
         </div>
       `).join("");
     }
@@ -654,7 +750,7 @@ HTML_PAGE = """<!doctype html>
         const fill = colorForLabel(item.label, index);
         return `
           <text class="bar-label" x="0" y="${y + 15}">${esc(item.label)}</text>
-          <rect x="${leftPad}" y="${y}" width="${width - leftPad - rightPad}" height="16" rx="8" fill="#efe5d7"></rect>
+          <rect x="${leftPad}" y="${y}" width="${width - leftPad - rightPad}" height="16" rx="8" fill="#e6ecf4"></rect>
           <rect x="${leftPad}" y="${y}" width="${lineWidth}" height="16" rx="8" fill="${fill}"></rect>
           <text class="bar-value" x="${Math.min(leftPad + lineWidth + 8, width - rightPad + 4)}" y="${y + 13}">${esc(formatChartValue(item.label, item.count))}</text>
         `;
