@@ -39,6 +39,11 @@ HTML_PAGE = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="build" content="__BUILD_ID__">
+  <!-- три уровня запретов кэша на случай прокси/старых браузеров -->
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>ML Optimizer</title>
   <style>
     :root {
@@ -642,6 +647,22 @@ HTML_PAGE = """<!doctype html>
     const defaultDataset = __DEFAULT_DATASET_JSON__;
     const appMode = "__APP_MODE__";
     const initialState = __INITIAL_STATE_JSON__;
+    const PAGE_BUILD = "__BUILD_ID__";
+    console.log("[ML Optimizer] build:", PAGE_BUILD, "mode:", appMode);
+    // Сверяем build страницы с build сервера. Если не совпадают — это
+    // значит, что страница в браузере закэширована из прошлого запуска,
+    // и нужен hard-reload (Cmd+Shift+R), иначе обновления не подтянутся.
+    fetch("/health", { cache: "no-store" }).then(async (r) => {
+      const serverBuild = r.headers.get("X-Build");
+      if (serverBuild && serverBuild !== PAGE_BUILD) {
+        console.warn("[ML Optimizer] page build", PAGE_BUILD, "≠ server build", serverBuild,
+                     "— нужен hard-reload (Cmd+Shift+R)");
+        const banner = document.createElement("div");
+        banner.style.cssText = "position:fixed;top:10px;right:10px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:10px 14px;border-radius:10px;font:13px/1.4 system-ui;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.12);max-width:320px;";
+        banner.innerHTML = "Страница из кэша устарела (build " + PAGE_BUILD + " ≠ " + serverBuild + ").<br>Нажмите <b>Cmd+Shift+R</b> для полной перезагрузки.";
+        document.body.appendChild(banner);
+      }
+    }).catch(() => {});
 
     function esc(value) {
       return String(value)
@@ -1300,6 +1321,7 @@ def render_html_page(server_url: str, app_mode: str, initial_state: dict[str, ob
         .replace("__SERVER_URL__", html.escape(server_url))
         .replace("__APP_MODE__", app_mode)
         .replace("__INITIAL_STATE_JSON__", json.dumps(initial_state, ensure_ascii=False))
+        .replace("__BUILD_ID__", html.escape(BUILD_ID))
     )
 
 
@@ -1582,7 +1604,19 @@ def run_comparison(dataset_raw: str) -> None:
         STATE.set_running(False)
 
 
+import time as _time
+
+# Метка сборки — уникальная на каждый запуск сервера. Используется
+# для cache-busting: вшивается в HTML и в заголовок X-Build, чтобы
+# пользователь и сам мог увидеть, какая версия страницы у него в
+# браузере, и при необходимости принудительно перезагрузить (Cmd+Shift+R).
+BUILD_ID = _time.strftime("%Y%m%d-%H%M%S")
+
+
 class RequestHandler(BaseHTTPRequestHandler):
+    # HTTP/1.1 даёт корректную семантику Cache-Control + keep-alive.
+    # На HTTP/1.0 некоторые браузеры агрессивнее кэшируют.
+    protocol_version = "HTTP/1.1"
     def do_GET(self) -> None:
         if self.path in ("/", "/index.html"):
             server_url = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
@@ -1595,6 +1629,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
+            self.send_header("X-Build", BUILD_ID)
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
@@ -1604,7 +1639,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             payload = json.dumps(STATE.snapshot(), ensure_ascii=False).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("X-Build", BUILD_ID)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -1614,6 +1651,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             payload = b"ok"
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("X-Build", BUILD_ID)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -1735,6 +1774,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        # все JSON-ответы — динамические, кэшировать категорически нельзя
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("X-Build", BUILD_ID)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
