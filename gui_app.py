@@ -107,9 +107,15 @@ HTML_PAGE = """<!doctype html>
     }
     .charts {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
       margin-bottom: 18px;
+    }
+    @media (max-width: 1100px) {
+      .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 600px) {
+      .charts { grid-template-columns: 1fr; }
     }
     .stats {
       display: grid;
@@ -524,11 +530,6 @@ HTML_PAGE = """<!doctype html>
 
     <section class="charts">
       <div class="card chart-box">
-        <h2 class="panel-title">Время выполнения: Rust vs Python</h2>
-        <div id="timingChart"></div>
-        <div class="chart-caption" id="timingCaption"></div>
-      </div>
-      <div class="card chart-box">
         <h2 class="panel-title">Средняя ошибка моделей</h2>
         <div id="errorChart"></div>
         <div class="chart-caption" id="errorCaption"></div>
@@ -542,6 +543,11 @@ HTML_PAGE = """<!doctype html>
         <h2 class="panel-title">Рекомендованные сканы</h2>
         <div id="scanChart"></div>
         <div class="chart-caption" id="scanCaption"></div>
+      </div>
+      <div class="card chart-box">
+        <h2 class="panel-title">Время выполнения: Rust vs Python</h2>
+        <div id="timingChart"></div>
+        <div class="chart-caption" id="timingCaption"></div>
       </div>
     </section>
 
