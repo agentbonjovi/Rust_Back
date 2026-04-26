@@ -279,7 +279,41 @@ HTML_PAGE = """<!doctype html>
       left: -2px;
       color: var(--accent);
     }
-    .fi-bar-cell { width: 40%; padding-right: 14px !important; }
+    .fi-desc {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+      white-space: normal;
+      max-width: 420px;
+    }
+    .fi-table th { white-space: normal; }
+    .fi-table .th-hint {
+      display: inline-block;
+      color: var(--muted);
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+    .fi-legend {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      background: #f6efe6;
+      border: 1px solid #eadfd0;
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    .fi-legend strong { color: var(--accent); }
+    .fi-legend code {
+      background: #fff;
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: 12.5px;
+    }
+    .fi-bar-cell { width: 30%; padding-right: 14px !important; }
     .fi-bar-track {
       width: 100%;
       height: 10px;
@@ -434,10 +468,22 @@ HTML_PAGE = """<!doctype html>
           <span class="chev">▶</span>
         </summary>
         <div class="panel-body">
-          <p class="hint" style="margin-top:0;">
-            KNN использует евклидово расстояние, поэтому «вес» признака пропорционален его std в обучающей выборке (после нормализации к [0,1]).
-            Чем больше bar — тем сильнее признак влияет на предсказание. Топ-3 отмечены ★.
-          </p>
+          <div class="fi-legend">
+            <p style="margin:0 0 6px;">
+              <strong>Что такое Std?</strong> &nbsp;
+              <code>Std</code> (standard deviation, стандартное отклонение) — мера разброса значений признака.
+              Маленький Std значит, что признак почти всегда одинаков и плохо отличает один предикат от другого;
+              большой Std — наоборот, признак сильно меняется и хорошо разделяет данные.
+            </p>
+            <p style="margin:0;">
+              <strong>Почему Std = «вес»?</strong> &nbsp;
+              KNN использует <em>евклидово расстояние</em> между векторами признаков. Признак с бóльшим Std
+              сильнее влияет на это расстояние, то есть сильнее «голосует» при поиске ближайших соседей.
+              Все 12 признаков сначала нормализуются к диапазону [0, 1], чтобы зарплата в миллионах не
+              перевесила флаг <code>operator_eq</code> ∈ {0, 1}. Колонка <em>Важность</em> — доля Std признака
+              в общей сумме Std. Топ-3 отмечены ★.
+            </p>
+          </div>
           <div id="featureImportance"><p class="fi-empty">Запустите анализ, чтобы увидеть приоритеты признаков.</p></div>
         </div>
       </details>
@@ -649,6 +695,22 @@ HTML_PAGE = """<!doctype html>
       return items;
     }
 
+    // Описания 12 признаков: что они означают для предиката WHERE x op v.
+    const FEATURE_DESCRIPTIONS = {
+      operator_eq:         "Флаг 0/1: оператор предиката — точное равенство (=).",
+      operator_lt:         "Флаг 0/1: оператор предиката — меньше (<, <=).",
+      operator_gt:         "Флаг 0/1: оператор предиката — больше (>, >=).",
+      operator_between:   "Флаг 0/1: оператор предиката — диапазон (BETWEEN).",
+      value_normalized:    "Где сравниваемое значение лежит в диапазоне столбца, нормализовано к [0,1].",
+      value2_normalized:   "Для BETWEEN: верхняя граница, нормализованная к [0,1] (для остальных операторов = value_normalized).",
+      column_mean:         "Среднее значение столбца, по которому идёт фильтрация.",
+      column_std:          "Стандартное отклонение значений столбца — мера разброса данных.",
+      column_unique_ratio: "Доля уникальных значений в столбце: 1 — все разные, ~0 — много повторов (категориальный).",
+      column_min:          "Минимальное значение в столбце.",
+      column_max:          "Максимальное значение в столбце.",
+      value_vs_mean:       "Z-score сравниваемого значения: на сколько стандартных отклонений оно отстоит от среднего.",
+    };
+
     function renderFeatureImportance(reportText) {
       const container = document.getElementById("featureImportance");
       const items = parseFeatureImportance(reportText);
@@ -660,10 +722,13 @@ HTML_PAGE = """<!doctype html>
       const rows = items.map(it => {
         const widthPct = Math.max(2, (it.pct / maxPct) * 100);
         const cls = it.rank <= 3 ? "fi-top" : "";
+        const desc = FEATURE_DESCRIPTIONS[it.name] || "";
         return (
           '<tr class="' + cls + '">' +
           '<td>' + it.rank + '</td>' +
-          '<td><code>' + it.name + '</code></td>' +
+          '<td><code>' + it.name + '</code>' +
+            (desc ? '<div class="fi-desc">' + desc + '</div>' : '') +
+          '</td>' +
           '<td>' + it.std.toFixed(4) + '</td>' +
           '<td>' + it.pct.toFixed(1) + '%</td>' +
           '<td class="fi-bar-cell"><div class="fi-bar-track">' +
@@ -674,31 +739,51 @@ HTML_PAGE = """<!doctype html>
       }).join("");
       container.innerHTML =
         '<table class="fi-table">' +
-        '<thead><tr><th>#</th><th>Признак</th><th>Std</th><th>Важность</th><th></th></tr></thead>' +
+        '<thead><tr>' +
+          '<th>#</th>' +
+          '<th>Признак <span class="th-hint">(имя в модели и описание)</span></th>' +
+          '<th title="Стандартное отклонение нормализованного признака в обучающей выборке">Std <span class="th-hint">(?)</span></th>' +
+          '<th>Важность <span class="th-hint">(% от суммы Std)</span></th>' +
+          '<th></th>' +
+        '</tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
     }
 
+    function safe(label, fn) {
+      try { fn(); }
+      catch (err) { console.error("[applyState] " + label + " failed:", err); }
+    }
+
     function applyState(data) {
-      statusEl.textContent = data.status;
-      outputEl.textContent = data.output || "Ожидание запуска...";
-      reportEl.textContent = data.report || "Отчет пока не найден.";
-      runBtn.disabled = data.running;
-      generateBtn.disabled = data.running;
-      renderStats(data.summary);
-      renderFeatureImportance(data.report || "");
-      renderBarChart("timingChart", "timingCaption", data.charts?.timing_bars, {
+      // Обёртываем каждый рендер в try/catch — иначе ошибка в одном
+      // блоке (например, в graph charts) останавливает обновление status,
+      // кнопок и других панелей.
+      safe("status",    () => { statusEl.textContent = data.status; });
+      safe("output",    () => { outputEl.textContent = data.output || "Ожидание запуска..."; });
+      safe("report",    () => { reportEl.textContent = data.report || "Отчет пока не найден."; });
+      // Все три кнопки управляются единообразно: пока идёт анализ —
+      // блокируем, иначе разблокируем (включая compareBtn, который
+      // compareBackends() вручную выключает в начале).
+      safe("buttons", () => {
+        runBtn.disabled     = !!data.running;
+        compareBtn.disabled = !!data.running;
+        generateBtn.disabled = !!data.running;
+      });
+      safe("stats",     () => { renderStats(data.summary); });
+      safe("features",  () => { renderFeatureImportance(data.report || ""); });
+      safe("timing",    () => { renderBarChart("timingChart", "timingCaption", data.charts?.timing_bars, {
         caption: "Время полного цикла анализа (мс). Меньше — лучше."
-      });
-      renderBarChart("errorChart", "errorCaption", data.charts?.error_bars, {
+      }); });
+      safe("error",     () => { renderBarChart("errorChart", "errorCaption", data.charts?.error_bars, {
         caption: "Сравнение средних ошибок моделей селективности."
-      });
-      renderBarChart("selectivityChart", "selectivityCaption", data.charts?.selectivity_bars, {
+      }); });
+      safe("selectivity", () => { renderBarChart("selectivityChart", "selectivityCaption", data.charts?.selectivity_bars, {
         caption: "Средние оценки селективности по всем сгенерированным предикатам."
-      });
-      renderBarChart("scanChart", "scanCaption", data.charts?.scan_counts, {
+      }); });
+      safe("scan",      () => { renderBarChart("scanChart", "scanCaption", data.charts?.scan_counts, {
         caption: "Сколько раз backend рекомендовал Index Scan, Seq Scan и Bitmap Scan."
-      });
-      renderPreview(data.preview);
+      }); });
+      safe("preview",   () => { renderPreview(data.preview); });
     }
 
     // Кнопки "Копировать" / "Скачать" в панелях
@@ -1403,6 +1488,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             encoded = page.encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            # отдаём страницу без кэша, иначе браузер держит старый JS/CSS
+            # и пользователю приходится делать Cmd+Shift+R после правок UI
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
