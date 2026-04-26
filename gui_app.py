@@ -268,8 +268,18 @@ HTML_PAGE = """<!doctype html>
     <section class="card" style="margin-bottom: 18px;">
       <label for="dataset">CSV-файл для анализа</label>
       <input id="dataset" type="text" value="__DEFAULT_DATASET__" spellcheck="false">
+      <div class="row" style="align-items: center;">
+        <label style="margin: 0; font-weight: 600;">Backend:</label>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: 500; margin: 0;">
+          <input type="radio" name="backend" value="rust" checked> Rust
+        </label>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: 500; margin: 0;">
+          <input type="radio" name="backend" value="python"> Python
+        </label>
+      </div>
       <div class="row">
         <button class="primary" id="runBtn">Запустить анализ</button>
+        <button class="primary" id="compareBtn" style="background: var(--accent-3);">Сравнить Rust vs Python</button>
         <button class="secondary" id="generateBtn">Сгенерировать CSV</button>
         <button class="secondary" id="defaultBtn">Подставить synthetic_data.csv</button>
         <button class="secondary" id="refreshBtn">Обновить данные</button>
@@ -281,6 +291,11 @@ HTML_PAGE = """<!doctype html>
     </section>
 
     <section class="charts">
+      <div class="card chart-box">
+        <h2 class="panel-title">Время выполнения: Rust vs Python</h2>
+        <div id="timingChart"></div>
+        <div class="chart-caption" id="timingCaption"></div>
+      </div>
       <div class="card chart-box">
         <h2 class="panel-title">Средняя ошибка моделей</h2>
         <div id="errorChart"></div>
@@ -331,9 +346,14 @@ HTML_PAGE = """<!doctype html>
     const previewHeadEl = document.getElementById("previewHead");
     const previewBodyEl = document.getElementById("previewBody");
     const runBtn = document.getElementById("runBtn");
+    const compareBtn = document.getElementById("compareBtn");
     const generateBtn = document.getElementById("generateBtn");
     const defaultBtn = document.getElementById("defaultBtn");
     const refreshBtn = document.getElementById("refreshBtn");
+    function selectedBackend() {
+      const el = document.querySelector("input[name=backend]:checked");
+      return el ? el.value : "rust";
+    }
     const defaultDataset = __DEFAULT_DATASET_JSON__;
     const appMode = "__APP_MODE__";
     const initialState = __INITIAL_STATE_JSON__;
@@ -354,11 +374,16 @@ HTML_PAGE = """<!doctype html>
         statsEl.innerHTML = "";
         return;
       }
+      const rustMs = summary.rust_ms;
+      const pythonMs = summary.python_ms;
+      const speedup = (rustMs && pythonMs) ? (pythonMs / rustMs) : null;
       const items = [
         ["Числ. столбцов", numberFmt(summary.numeric_columns || 0), "найдено в CSV"],
         ["Предикатов", numberFmt(summary.predicate_count || 0), "проверено backend"],
         ["KNN error", numberFmt(summary.avg_error_knn || 0), "средняя ошибка"],
-        ["Hist error", numberFmt(summary.avg_error_hist || 0), "средняя ошибка"]
+        ["Время Rust, мс", rustMs ? numberFmt(rustMs) : "—", "последний запуск"],
+        ["Время Python, мс", pythonMs ? numberFmt(pythonMs) : "—", "последний запуск"],
+        ["Ускорение Rust", speedup ? "x" + speedup.toFixed(2) : "—", "Python / Rust"]
       ];
       statsEl.innerHTML = items.map(([label, value, hint]) => `
         <div class="stat">
@@ -475,6 +500,9 @@ HTML_PAGE = """<!doctype html>
       runBtn.disabled = data.running;
       generateBtn.disabled = data.running;
       renderStats(data.summary);
+      renderBarChart("timingChart", "timingCaption", data.charts?.timing_bars, {
+        caption: "Время полного цикла анализа (мс). Меньше — лучше."
+      });
       renderBarChart("errorChart", "errorCaption", data.charts?.error_bars, {
         caption: "Сравнение средних ошибок моделей селективности."
       });
@@ -497,13 +525,14 @@ HTML_PAGE = """<!doctype html>
       applyState(data);
     }
 
-    async function runAnalysis() {
+    async function runAnalysis(backendOverride) {
       if (appMode === "local") {
         statusEl.textContent = "В локальном standalone-режиме live-запуск недоступен. Используйте browser mode.";
         return;
       }
       const body = new URLSearchParams();
       body.set("dataset", datasetInput.value.trim());
+      body.set("backend", backendOverride || selectedBackend());
       const response = await fetch("/run", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -512,6 +541,22 @@ HTML_PAGE = """<!doctype html>
       const data = await response.json();
       statusEl.textContent = data.status;
       await fetchState();
+    }
+
+    async function compareBackends() {
+      if (appMode === "local") return;
+      compareBtn.disabled = true;
+      runBtn.disabled = true;
+      statusEl.textContent = "Сравнение: запускаю Rust...";
+      const body = new URLSearchParams();
+      body.set("dataset", datasetInput.value.trim());
+      const response = await fetch("/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
     }
 
     async function loadPreview() {
@@ -548,7 +593,8 @@ HTML_PAGE = """<!doctype html>
       await loadPreview();
     }
 
-    runBtn.addEventListener("click", runAnalysis);
+    runBtn.addEventListener("click", () => runAnalysis());
+    compareBtn.addEventListener("click", compareBackends);
     generateBtn.addEventListener("click", generateCsv);
     defaultBtn.addEventListener("click", () => {
       datasetInput.value = defaultDataset;
@@ -580,6 +626,7 @@ class AppState:
         self.summary = {}
         self.charts = {}
         self.preview = {"columns": [], "rows": []}
+        self.timings: dict[str, float] = {}  # {"rust": ms, "python": ms}
 
     def _read_report(self) -> str:
         if REPORT_FILE.exists():
@@ -620,8 +667,25 @@ class AppState:
 
     def update_preview(self, summary: dict[str, object], charts: dict[str, object]) -> None:
         with self.lock:
-            self.summary = summary
-            self.charts = charts
+            merged_summary = dict(summary)
+            merged_charts = dict(charts)
+            if self.timings.get("rust"):
+                merged_summary["rust_ms"] = round(self.timings["rust"], 3)
+            if self.timings.get("python"):
+                merged_summary["python_ms"] = round(self.timings["python"], 3)
+            timing_bars = []
+            if self.timings.get("rust"):
+                timing_bars.append({"label": "Rust", "count": round(self.timings["rust"], 3)})
+            if self.timings.get("python"):
+                timing_bars.append({"label": "Python", "count": round(self.timings["python"], 3)})
+            if timing_bars:
+                merged_charts["timing_bars"] = timing_bars
+            self.summary = merged_summary
+            self.charts = merged_charts
+
+    def record_timing(self, backend: str, elapsed_ms: float) -> None:
+        with self.lock:
+            self.timings[backend] = elapsed_ms
 
     def set_preview(self, preview: dict[str, object]) -> None:
         with self.lock:
@@ -699,7 +763,16 @@ def _should_show_output_line(line: str) -> bool:
     return True
 
 
-def resolve_backend_command(dataset_path: Path) -> list[str]:
+def resolve_backend_command(dataset_path: Path, backend: str = "rust") -> list[str]:
+    if backend == "python":
+        script = ROOT_DIR / "python_backend.py"
+        if not script.exists():
+            raise FileNotFoundError(f"Не найден Python backend: {script}")
+        return [sys.executable, str(script), str(dataset_path)]
+
+    release_binary = ROOT_DIR / "target" / "release" / "bac123"
+    if release_binary.exists():
+        return [str(release_binary), str(dataset_path)]
     compiled_binary = ROOT_DIR / "target" / "debug" / "bac123"
     if compiled_binary.exists():
         return [str(compiled_binary), str(dataset_path)]
@@ -712,10 +785,10 @@ def resolve_backend_command(dataset_path: Path) -> list[str]:
     ]
     for candidate in candidates:
         if candidate and Path(candidate).exists():
-            return [candidate, "run", "--", str(dataset_path)]
+            return [candidate, "run", "--release", "--", str(dataset_path)]
 
     raise FileNotFoundError(
-        "Не найден ни `cargo`, ни готовый бинарник `target/debug/bac123`."
+        "Не найден ни `cargo`, ни готовый бинарник `target/{release,debug}/bac123`."
     )
 
 
@@ -771,6 +844,8 @@ def parse_report_metrics(report_text: str, dataset_path: Path | None = None) -> 
     scan_pattern = re.compile(r"Recommended scan: (.+)")
     numeric_columns_pattern = re.compile(r"Числовые столбцы: (.+)")
     dataset_pattern = re.compile(r"Файл данных: (.+)")
+    backend_pattern = re.compile(r"^Backend:\s*(\w+)", re.MULTILINE)
+    elapsed_pattern = re.compile(r"Время выполнения:\s*([0-9.]+)\s*мс")
 
     values = []
     errors = []
@@ -809,6 +884,12 @@ def parse_report_metrics(report_text: str, dataset_path: Path | None = None) -> 
         "predicate_count": len(values),
     }
     charts: dict[str, object] = {}
+
+    backend_match = backend_pattern.search(report_text)
+    elapsed_match = elapsed_pattern.search(report_text)
+    if backend_match and elapsed_match:
+        summary["last_backend"] = backend_match.group(1).strip().lower()
+        summary["last_elapsed_ms"] = float(elapsed_match.group(1))
 
     if errors:
         avg_knn = sum(item[0] for item in errors) / len(errors)
@@ -899,21 +980,26 @@ def create_local_dashboard(dataset_raw: str) -> Path:
     return LOCAL_DASHBOARD_FILE
 
 
-def run_analysis(dataset_raw: str) -> None:
+def run_analysis(dataset_raw: str, backend: str = "rust", *, manage_state: bool = True) -> int:
     dataset_value = dataset_raw.strip() or str(DEFAULT_DATASET)
     dataset_path = Path(dataset_value).expanduser()
 
     if dataset_path.suffix.lower() != ".csv":
-        STATE.set_running(False)
-        STATE.set_status("Ошибка: нужно указать путь к CSV-файлу.")
-        return
+        if manage_state:
+            STATE.set_running(False)
+            STATE.set_status("Ошибка: нужно указать путь к CSV-файлу.")
+        return 1
 
-    STATE.reset_output()
-    STATE.set_running(True)
-    STATE.set_status(f"Выполняется анализ файла: {dataset_path}")
+    if manage_state:
+        STATE.reset_output()
+        STATE.set_running(True)
+        STATE.set_status(f"Выполняется анализ ({backend}) файла: {dataset_path}")
+    else:
+        STATE.append_output(f"\n--- Запуск backend: {backend} ---\n")
+        STATE.set_status(f"Сравнение: выполняется backend={backend}")
 
     try:
-        command = resolve_backend_command(dataset_path)
+        command = resolve_backend_command(dataset_path, backend)
         env = os.environ.copy()
         env["PATH"] = ":".join(
             part for part in [
@@ -932,14 +1018,16 @@ def run_analysis(dataset_raw: str) -> None:
             bufsize=1,
             env=env,
         )
-    except FileNotFoundError:
-        STATE.set_running(False)
-        STATE.set_status("Ошибка: не найден `cargo` и нет готового бинарника `target/debug/bac123`.")
-        return
+    except FileNotFoundError as exc:
+        if manage_state:
+            STATE.set_running(False)
+        STATE.set_status(f"Ошибка: {exc}")
+        return 1
     except Exception as exc:  # pragma: no cover
-        STATE.set_running(False)
+        if manage_state:
+            STATE.set_running(False)
         STATE.set_status(f"Ошибка запуска: {exc}")
-        return
+        return 1
 
     assert process.stdout is not None
     for line in process.stdout:
@@ -948,17 +1036,48 @@ def run_analysis(dataset_raw: str) -> None:
 
     code = process.wait()
     STATE.reload_report()
-    STATE.set_running(False)
     if code == 0:
-        STATE.set_status(f"Анализ завершен успешно. Отчет обновлен: {REPORT_FILE.name}")
+        elapsed_summary, _ = parse_report_metrics(STATE.snapshot()["report"], dataset_path)
+        elapsed_ms = elapsed_summary.get("last_elapsed_ms")
+        report_backend = elapsed_summary.get("last_backend")
+        if elapsed_ms and report_backend:
+            STATE.record_timing(str(report_backend), float(elapsed_ms))
         try:
             summary, charts = load_dataset_preview(str(dataset_path))
             STATE.update_preview(summary, charts)
             STATE.set_preview(load_csv_preview(str(dataset_path)))
         except Exception:
             pass
+        STATE.set_status(
+            f"Анализ ({backend}) завершен. Время: {elapsed_ms:.1f} мс."
+            if elapsed_ms else f"Анализ ({backend}) завершен."
+        )
     else:
-        STATE.set_status(f"Процесс завершился с кодом {code}. Подробности смотрите в выводе процесса.")
+        STATE.set_status(f"Процесс ({backend}) завершился с кодом {code}.")
+
+    if manage_state:
+        STATE.set_running(False)
+    return code
+
+
+def run_comparison(dataset_raw: str) -> None:
+    STATE.reset_output()
+    STATE.set_running(True)
+    try:
+        for backend in ("rust", "python"):
+            run_analysis(dataset_raw, backend=backend, manage_state=False)
+        rust_ms = STATE.timings.get("rust")
+        python_ms = STATE.timings.get("python")
+        if rust_ms and python_ms:
+            speedup = python_ms / rust_ms
+            STATE.set_status(
+                f"Сравнение завершено. Rust: {rust_ms:.1f} мс, Python: {python_ms:.1f} мс. "
+                f"Rust быстрее в {speedup:.2f}x."
+            )
+        else:
+            STATE.set_status("Сравнение завершено, но не удалось получить оба времени.")
+    finally:
+        STATE.set_running(False)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -1026,6 +1145,19 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._write_json({"ok": False, "status": f"Не удалось сгенерировать CSV: {exc}"}, HTTPStatus.BAD_REQUEST)
             return
 
+        if self.path == "/compare":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+            form = urllib.parse.parse_qs(raw_body)
+            dataset = form.get("dataset", [""])[0]
+            if STATE.snapshot()["running"]:
+                self._write_json({"ok": False, "status": "Анализ уже выполняется."}, HTTPStatus.CONFLICT)
+                return
+            thread = threading.Thread(target=run_comparison, args=(dataset,), daemon=True)
+            thread.start()
+            self._write_json({"ok": True, "status": "Сравнение Rust vs Python запущено."}, HTTPStatus.OK)
+            return
+
         if self.path != "/run":
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
@@ -1034,14 +1166,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         raw_body = self.rfile.read(length).decode("utf-8")
         form = urllib.parse.parse_qs(raw_body)
         dataset = form.get("dataset", [""])[0]
+        backend = form.get("backend", ["rust"])[0].lower()
+        if backend not in ("rust", "python"):
+            backend = "rust"
 
         if STATE.snapshot()["running"]:
             self._write_json({"ok": False, "status": "Анализ уже выполняется."}, HTTPStatus.CONFLICT)
             return
 
-        thread = threading.Thread(target=run_analysis, args=(dataset,), daemon=True)
+        thread = threading.Thread(target=run_analysis, args=(dataset, backend), daemon=True)
         thread.start()
-        self._write_json({"ok": True, "status": "Запуск анализа начат."}, HTTPStatus.OK)
+        self._write_json({"ok": True, "status": f"Запуск анализа ({backend}) начат."}, HTTPStatus.OK)
 
     def _write_json(self, payload: dict[str, object], status: HTTPStatus) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")

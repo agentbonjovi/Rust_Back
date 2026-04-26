@@ -1,10 +1,106 @@
 # Rust_Back
 
-Проект содержит Rust-анализатор селективности предикатов и локальное приложение для просмотра результатов.
+Проект содержит Rust-анализатор селективности предикатов и локальное приложение для просмотра результатов. Параллельно реализован полный аналог на чистом Python (`python_backend.py`) — он повторяет ту же логику и используется для прямого сравнения скорости языков на одной и той же задаче.
+
+## Установка одной командой
+
+После клонирования репозитория выполните:
+
+```bash
+# macOS / Linux / WSL
+bash setup.sh
+```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+Скрипт автоматически:
+
+1. установит `rustup`, если `cargo` не найден, и подтянет toolchain из [rust-toolchain.toml](rust-toolchain.toml);
+2. проверит, что есть Python `>= 3.9`;
+3. установит Python-зависимости из [requirements.txt](requirements.txt) (сейчас он пуст — порт сделан на чистой stdlib);
+4. соберёт Rust release-бинарь (`cargo build --release`) с зафиксированными версиями crate'ов из [Cargo.lock](Cargo.lock);
+5. сгенерирует `synthetic_data.csv`, если его ещё нет;
+6. сделает smoke-тест обоих бэкендов и распечатает их время выполнения.
+
+Полезные флаги:
+
+- `bash setup.sh --no-build` — пропустить `cargo build` (если хотите проверить только окружение);
+- `bash setup.sh --no-smoke` — пропустить smoke-тест.
+
+Версии фиксируются автоматически:
+
+- Rust crate'ы — через коммит `Cargo.lock`;
+- Rust toolchain — через `rust-toolchain.toml` (rustup сам скачает указанный канал);
+- Python пакеты — через `requirements.txt` (на этапе порта внешних не требуется).
+
+## Быстрый старт после установки
+
+После того как `setup.sh` (или `setup.ps1`) отработал, доступны три способа запуска:
+
+```bash
+# 1. Web GUI с переключателем Rust / Python и кнопкой «Сравнить»
+python3 gui_app.py --mode browser
+# откроется http://127.0.0.1:8765
+
+# 2. Только Rust backend в консоли
+./target/release/bac123 synthetic_data.csv
+
+# 3. Только Python backend в консоли
+python3 python_backend.py synthetic_data.csv
+```
+
+Любой из бэкендов перезаписывает [ml_optimizer_knn_report.txt](ml_optimizer_knn_report.txt) с пометкой `Backend: Rust` или `Backend: Python` и строкой `Время выполнения: X.XXX мс`. Web GUI парсит эти строки и сравнивает оба времени в реальном времени.
+
+## Сравнение языков (Rust vs Python)
+
+В качестве ключевой части дипломного исследования к проекту добавлена возможность запустить идентичный алгоритм на двух языках и измерить время выполнения.
+
+- backend на Rust: [src/main.rs](src/main.rs) — собирается через `cargo build --release`;
+- backend на Python: [python_backend.py](python_backend.py) — точный порт на стандартной библиотеке (без `numpy` / `pandas` / `sklearn`), чтобы сравнение отражало производительность языка, а не C-библиотек под капотом.
+
+Оба бэкенда:
+
+- читают тот же CSV;
+- считают одинаковую статистику и гистограммы;
+- обучают одинаковую KNN-модель (`k=5`, взвешенное по расстоянию);
+- генерируют одинаковый набор предикатов и три способа оценки селективности;
+- замеряют общее время полного цикла анализа через монотонные часы (`Instant` в Rust, `time.perf_counter()` в Python);
+- записывают строку `Время выполнения: X.XXX мс` и `Backend: <язык>` в `ml_optimizer_knn_report.txt`.
+
+Запуск отдельных бэкендов из консоли:
+
+```bash
+# Rust (release-сборка для честного сравнения)
+cargo run --release -- synthetic_data.csv
+
+# Python
+python3 python_backend.py synthetic_data.csv
+```
+
+## Сравнение из GUI
+
+В web-интерфейсе:
+
+- переключатель `Backend: Rust / Python` — выбирает, какой бэкенд запустить кнопкой `Запустить анализ`;
+- кнопка `Сравнить Rust vs Python` — последовательно запускает оба бэкенда на текущем CSV, сохраняет оба времени и показывает их на графике `Время выполнения: Rust vs Python`;
+- сводные карточки показывают `Время Rust, мс`, `Время Python, мс` и итоговое `Ускорение Rust = Python / Rust`.
+
+Пример замеров на `synthetic_data.csv` (10 000 строк, 6 столбцов) на той же машине:
+
+| Backend | Сборка     | Время полного анализа |
+|---------|------------|------------------------|
+| Rust    | `release`  | ~7–10 мс               |
+| Rust    | `debug`    | ~150 мс                |
+| Python  | CPython 3  | ~220–230 мс            |
+
+То есть оптимизированный Rust в ~25–30 раз быстрее эквивалентной реализации на Python при одинаковой логике.
 
 ## Что делает `main.rs`
 
-Основная логика находится в [src/main.rs](/Users/r2d2/Documents/GitHub/Rust_Back/src/main.rs).
+Основная логика находится в [src/main.rs](src/main.rs).
 
 Программа:
 
@@ -20,28 +116,16 @@
 7. сравнивает ошибки оценок;
 8. рекомендует тип сканирования:
    `Index Scan`, `Seq Scan`, `Bitmap Scan`;
-9. сохраняет итог в [ml_optimizer_knn_report.txt](/Users/r2d2/Documents/GitHub/Rust_Back/ml_optimizer_knn_report.txt).
+9. сохраняет итог в [ml_optimizer_knn_report.txt](ml_optimizer_knn_report.txt).
 
 Если переданный CSV не существует, backend может сгенерировать синтетический файл.
-
-## Запуск backend из консоли
-
-```bash
-cargo run -- synthetic_data.csv
-```
-
-Или через уже собранный бинарник:
-
-```bash
-./target/debug/bac123 synthetic_data.csv
-```
 
 ## Локальное macOS приложение
 
 В проекте уже собран локальный bundle:
 
-- [ML Optimizer.app](/Users/r2d2/Documents/GitHub/Rust_Back/ML%20Optimizer.app)
-- [Open ML Optimizer.command](/Users/r2d2/Documents/GitHub/Rust_Back/Open%20ML%20Optimizer.command)
+- [ML Optimizer.app](ML%20Optimizer.app)
+- [Open ML Optimizer.command](Open%20ML%20Optimizer.command)
 
 Самый простой способ запуска на Mac:
 
@@ -108,47 +192,18 @@ python3 gui_app.py --mode local --dataset synthetic_data.csv
   `Index Scan`, `Seq Scan`, `Bitmap Scan`;
 - это визуализация итогового решения оптимизатора по всем сгенерированным предикатам.
 
-## Основные блоки Rust-кода
+## Основные блоки кода
 
-Ниже приведены основные блоки кода с диапазонами строк и их назначением.
+В [src/main.rs](src/main.rs) (Rust) и [python_backend.py](python_backend.py) (Python) логика разбита на одинаковые блоки:
 
-- строки `16-177`:
-  описание основных структур данных и enum'ов: метаданные столбцов, типы данных, распределения, предикаты, оценки селективности, варианты сканирования, статистика по столбцам и обучающие примеры для KNN;
-- строки `179-253`:
-  реализация `SimpleKNN`:
-  хранение обучающих примеров, вычисление евклидова расстояния, поиск ближайших соседей и предсказание селективности;
-- строки `255-399`:
-  реализация `KNNSelectivityModel`:
-  извлечение признаков из предиката, добавление обучающих примеров, предсказание селективности и запасная эвристика, если модель ещё не обучена;
-- строки `403-467`:
-  `DataGenerator` для генерации синтетического CSV-файла, если входной файл отсутствует;
-- строки `469-1007`:
-  `DataAnalyzer`:
-  загрузка CSV, вычисление статистики, построение гистограмм, определение типа данных и распределения, обучение KNN, генерация тестовых предикатов, расчёт реальной и предсказанной селективности, а также выбор рекомендованного метода сканирования;
-- строки `475-499`:
-  `from_csv`:
-  чтение CSV и преобразование числовых значений в рабочую структуру `HashMap<String, Vec<f64>>`;
-- строки `501-525`:
-  `compute_statistics` и `numeric_columns_sorted`:
-  подготовка статистики и списка числовых столбцов для дальнейшего анализа;
-- строки `528-607`:
-  `build_histogram`, `infer_data_type`, `infer_distribution`:
-  построение гистограмм и определение характеристик каждого числового столбца;
-- строки `610-692`:
-  `train_knn_model` и `generate_training_predicates`:
-  генерация обучающих примеров по данным CSV и обучение KNN-модели;
-- строки `695-785`:
-  `estimate_selectivity_histogram`, `estimate_selectivity_ml`, `estimate_selectivity_approx`:
-  три разных способа оценки селективности предикатов;
-- строки `788-864`:
-  `recommend_scan_method` и `generate_predicates`:
-  выбор `Seq Scan` / `Index Scan` / `Bitmap Scan` и создание набора предикатов для тестирования;
-- строки `866-1007`:
-  `compute_actual_selectivity` и `evaluate_predictors_with_knn`:
-  вычисление реальной селективности по данным, сравнение всех методов оценки и сбор итоговых результатов;
-- строки `1011-1118`:
-  `main`:
-  точка входа программы, запуск анализа, вывод детального лога и сохранение итогового отчёта в `ml_optimizer_knn_report.txt`;
-- строки `1122-1185`:
-  вспомогательные функции:
-  парсинг чисел, фильтрация числовых столбцов и расчёт статистики через `burn::Tensor`.
+- **структуры данных** — `ColumnMetadata`, `Predicate`, `Operator`, `ScanMethod`, `ColumnStats`, `HistogramBucket`, `TrainingExample`;
+- **`SimpleKNN`** — хранение примеров, евклидово расстояние, поиск k ближайших соседей, обычное и взвешенное предсказание;
+- **`KNNSelectivityModel`** — извлечение 12-мерного вектора признаков из предиката, обучение и предсказание, эвристический fallback на необученной модели;
+- **`DataGenerator`** — генерация синтетического CSV (нормальное, скошенное и равномерное распределения);
+- **`DataAnalyzer`** — чтение CSV, расчёт статистик, построение гистограмм (20 бакетов), определение типа данных и распределения, обучение KNN, генерация тестовых предикатов;
+- **три способа оценки селективности** — `estimate_selectivity_ml` (KNN), `estimate_selectivity_histogram`, `estimate_selectivity_approx` (PostgreSQL-эвристики);
+- **`recommend_scan_method`** — выбор `Index Scan` / `Bitmap Scan` / `Seq Scan` по предсказанной селективности и оценке стоимости;
+- **`evaluate_predictors_with_knn`** — оркестратор: считает реальную селективность, сравнивает три метода, печатает таблицу;
+- **`main`** — точка входа: парсит аргументы, замеряет время через `Instant` (Rust) / `time.perf_counter()` (Python), пишет [ml_optimizer_knn_report.txt](ml_optimizer_knn_report.txt).
+
+В Rust-версии дополнительно используется `burn::Tensor` для расчёта `mean` и `std` через `NdArray`-backend — это демонстрирует интеграцию с ML-фреймворком.
