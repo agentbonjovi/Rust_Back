@@ -388,8 +388,8 @@ HTML_PAGE = """<!doctype html>
         <button class="secondary" id="refreshBtn">Обновить данные</button>
       </div>
       <div class="status" id="status">Загрузка состояния...</div>
-      <div class="meta">Если файл не существует, Rust-приложение само сгенерирует синтетический CSV.</div>
-      <div class="hint" id="modeHint">Окно работает по адресу <code>__SERVER_URL__</code>. Можно открыть и вручную, если браузер не запустился автоматически.</div>
+      <!-- modeHint используется JS только в standalone-режиме; в browser-mode остаётся пустым -->
+      <div class="hint" id="modeHint" hidden></div>
       <div class="stats" id="stats"></div>
     </section>
 
@@ -853,7 +853,9 @@ HTML_PAGE = """<!doctype html>
     if (appMode === "local") {
       runBtn.disabled = true;
       browseBtn.disabled = true;
-      document.getElementById("modeHint").textContent = "Это локальный standalone-дашборд без сервера. Для интерактивного запуска анализа используйте browser mode.";
+      const modeHint = document.getElementById("modeHint");
+      modeHint.textContent = "Это локальный standalone-дашборд без сервера. Для интерактивного запуска анализа используйте browser mode.";
+      modeHint.hidden = false;
       fetchState();
     } else {
       fetchState().then(loadPreview);
@@ -1386,11 +1388,7 @@ def run_comparison(dataset_raw: str) -> None:
         rust_ms = STATE.timings.get("rust")
         python_ms = STATE.timings.get("python")
         if rust_ms and python_ms:
-            speedup = python_ms / rust_ms
-            STATE.set_status(
-                f"Сравнение завершено. Rust: {rust_ms:.1f} мс, Python: {python_ms:.1f} мс. "
-                f"Rust быстрее в {speedup:.2f}x."
-            )
+            STATE.set_status("Сравнение завершено.")
         else:
             STATE.set_status("Сравнение завершено, но не удалось получить оба времени.")
     finally:
