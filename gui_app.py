@@ -202,6 +202,98 @@ HTML_PAGE = """<!doctype html>
       grid-template-columns: 1fr;
       gap: 18px;
     }
+    /* Свёртываемые панели через <details> */
+    details.card { padding: 0; }
+    details.card > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 18px 18px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    details.card > summary::-webkit-details-marker { display: none; }
+    details.card > summary .panel-title { margin: 0; flex: 1; }
+    details.card > summary .chev {
+      transition: transform .15s ease;
+      color: var(--muted);
+      font-size: 14px;
+      user-select: none;
+    }
+    details.card[open] > summary .chev { transform: rotate(90deg); }
+    details.card > .panel-body {
+      padding: 0 18px 18px;
+    }
+    /* Тулбар с кнопками "Копировать" / "Скачать" */
+    .panel-tools {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .tool-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .12s ease, transform .12s ease;
+    }
+    .tool-btn:hover { background: #f6efe6; transform: translateY(-1px); }
+    .tool-btn.copied { background: #d4edda; border-color: #b5d9bc; }
+    /* Подсветка строк во всех таблицах */
+    tbody tr { transition: background .1s ease; }
+    tbody tr:hover { background: #fbf4ea; }
+    /* Таблица "Приоритеты признаков KNN" */
+    .fi-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .fi-table th, .fi-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee3d4;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .fi-table th {
+      background: #fbf4ea;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+    .fi-table code {
+      background: #f6efe6;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12.5px;
+    }
+    .fi-table tr.fi-top td { font-weight: 700; }
+    .fi-table tr.fi-top td:first-child {
+      position: relative;
+    }
+    .fi-table tr.fi-top td:first-child::before {
+      content: "★";
+      position: absolute;
+      left: -2px;
+      color: var(--accent);
+    }
+    .fi-bar-cell { width: 40%; padding-right: 14px !important; }
+    .fi-bar-track {
+      width: 100%;
+      height: 10px;
+      background: #f0e6d6;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .fi-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #ff9c5a);
+      border-radius: 999px;
+      transition: width .4s ease;
+    }
+    .fi-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
     .hint {
       margin-top: 12px;
       color: var(--muted);
@@ -335,15 +427,49 @@ HTML_PAGE = """<!doctype html>
       </div>
     </section>
 
+    <section class="card" id="featureCard" style="margin-bottom: 18px;">
+      <details open>
+        <summary>
+          <h2 class="panel-title">Приоритеты признаков KNN</h2>
+          <span class="chev">▶</span>
+        </summary>
+        <div class="panel-body">
+          <p class="hint" style="margin-top:0;">
+            KNN использует евклидово расстояние, поэтому «вес» признака пропорционален его std в обучающей выборке (после нормализации к [0,1]).
+            Чем больше bar — тем сильнее признак влияет на предсказание. Топ-3 отмечены ★.
+          </p>
+          <div id="featureImportance"><p class="fi-empty">Запустите анализ, чтобы увидеть приоритеты признаков.</p></div>
+        </div>
+      </details>
+    </section>
+
     <section class="stack">
-      <div class="card">
-        <h2 class="panel-title">Вывод процесса</h2>
-        <pre id="output">Ожидание запуска...</pre>
-      </div>
-      <div class="card">
-        <h2 class="panel-title">Отчет</h2>
-        <pre class="report" id="report">Отчет будет показан здесь.</pre>
-      </div>
+      <details class="card" open>
+        <summary>
+          <h2 class="panel-title">Вывод процесса</h2>
+          <div class="panel-tools">
+            <button type="button" class="tool-btn" data-copy="output">Копировать</button>
+            <button type="button" class="tool-btn" data-download="output" data-filename="ml_optimizer_output.txt">Скачать .txt</button>
+            <span class="chev">▶</span>
+          </div>
+        </summary>
+        <div class="panel-body">
+          <pre id="output">Ожидание запуска...</pre>
+        </div>
+      </details>
+      <details class="card" open>
+        <summary>
+          <h2 class="panel-title">Отчет</h2>
+          <div class="panel-tools">
+            <button type="button" class="tool-btn" data-copy="report">Копировать</button>
+            <button type="button" class="tool-btn" data-download="report" data-filename="ml_optimizer_knn_report.txt">Скачать .txt</button>
+            <span class="chev">▶</span>
+          </div>
+        </summary>
+        <div class="panel-body">
+          <pre class="report" id="report">Отчет будет показан здесь.</pre>
+        </div>
+      </details>
     </section>
   </div>
 
@@ -505,6 +631,53 @@ HTML_PAGE = """<!doctype html>
       `).join("");
     }
 
+    // Парсит секцию [3/4] "Приоритеты признаков" из текста отчёта.
+    // Строка: "       1  column_unique_ratio      0.4480    10.0%  ████··"
+    function parseFeatureImportance(reportText) {
+      if (!reportText) return [];
+      const re = /^\s+(\d+)\s+([A-Za-z_][A-Za-z0-9_]*)\s+([\d.]+)\s+([\d.]+)%\s+[█·]+\s*$/gm;
+      const items = [];
+      let m;
+      while ((m = re.exec(reportText)) !== null) {
+        items.push({
+          rank: parseInt(m[1], 10),
+          name: m[2],
+          std: parseFloat(m[3]),
+          pct: parseFloat(m[4]),
+        });
+      }
+      return items;
+    }
+
+    function renderFeatureImportance(reportText) {
+      const container = document.getElementById("featureImportance");
+      const items = parseFeatureImportance(reportText);
+      if (!items.length) {
+        container.innerHTML = '<p class="fi-empty">Запустите анализ, чтобы увидеть приоритеты признаков.</p>';
+        return;
+      }
+      const maxPct = Math.max.apply(null, items.map(i => i.pct).concat([0.0001]));
+      const rows = items.map(it => {
+        const widthPct = Math.max(2, (it.pct / maxPct) * 100);
+        const cls = it.rank <= 3 ? "fi-top" : "";
+        return (
+          '<tr class="' + cls + '">' +
+          '<td>' + it.rank + '</td>' +
+          '<td><code>' + it.name + '</code></td>' +
+          '<td>' + it.std.toFixed(4) + '</td>' +
+          '<td>' + it.pct.toFixed(1) + '%</td>' +
+          '<td class="fi-bar-cell"><div class="fi-bar-track">' +
+            '<div class="fi-bar-fill" style="width:' + widthPct.toFixed(1) + '%"></div>' +
+          '</div></td>' +
+          '</tr>'
+        );
+      }).join("");
+      container.innerHTML =
+        '<table class="fi-table">' +
+        '<thead><tr><th>#</th><th>Признак</th><th>Std</th><th>Важность</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    }
+
     function applyState(data) {
       statusEl.textContent = data.status;
       outputEl.textContent = data.output || "Ожидание запуска...";
@@ -512,6 +685,7 @@ HTML_PAGE = """<!doctype html>
       runBtn.disabled = data.running;
       generateBtn.disabled = data.running;
       renderStats(data.summary);
+      renderFeatureImportance(data.report || "");
       renderBarChart("timingChart", "timingCaption", data.charts?.timing_bars, {
         caption: "Время полного цикла анализа (мс). Меньше — лучше."
       });
@@ -526,6 +700,55 @@ HTML_PAGE = """<!doctype html>
       });
       renderPreview(data.preview);
     }
+
+    // Кнопки "Копировать" / "Скачать" в панелях
+    async function copyToClipboard(text, btn) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (err) {
+        // fallback для старых браузеров
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        ta.remove();
+      }
+      const original = btn.textContent;
+      btn.textContent = "Скопировано";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
+    }
+
+    function downloadAsText(text, filename) {
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      // не позволяем кнопкам внутри <summary> сворачивать панель
+      if (target.classList.contains("tool-btn")) {
+        event.preventDefault();
+        event.stopPropagation();
+        const copyId = target.getAttribute("data-copy");
+        if (copyId) {
+          const el = document.getElementById(copyId);
+          if (el) copyToClipboard(el.textContent || "", target);
+          return;
+        }
+        const dlId = target.getAttribute("data-download");
+        if (dlId) {
+          const el = document.getElementById(dlId);
+          const filename = target.getAttribute("data-filename") || (dlId + ".txt");
+          if (el) downloadAsText(el.textContent || "", filename);
+        }
+      }
+    });
 
     async function fetchState() {
       if (appMode === "local") {
