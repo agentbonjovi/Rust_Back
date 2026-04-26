@@ -176,22 +176,31 @@ HTML_PAGE = """<!doctype html>
     }
     pre {
       margin: 0;
-      min-height: 360px;
-      max-height: 520px;
-      overflow: auto;
-      padding: 14px;
+      min-height: 320px;
+      max-height: min(70vh, 720px);
+      overflow: auto;          /* и горизонтальный, и вертикальный скролл */
+      padding: 14px 16px;
       border-radius: 14px;
       border: 1px solid #d9d9d9;
       background: #1e1e1e;
       color: #f8fafc;
-      font: 13px/1.45 "SFMono-Regular", Menlo, monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
+      font: 13px/1.45 "SFMono-Regular", Menlo, "Cascadia Mono", Consolas, monospace;
+      /* Не ломаем строки — таблицы ASCII должны выравниваться. Если строка
+         длиннее окна, появляется горизонтальный скролл вместо переносов. */
+      white-space: pre;
+      tab-size: 2;
     }
     .report {
       background: #fffdf8;
       color: #1f2937;
       border-color: #e7dccf;
+    }
+    /* "Вывод процесса" и "Отчёт" — каждый во всю ширину, друг под другом.
+       Текст моноширинный и широкий, в две колонки выглядит сжатым. */
+    .stack {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
     }
     .hint {
       margin-top: 12px;
@@ -326,7 +335,7 @@ HTML_PAGE = """<!doctype html>
       </div>
     </section>
 
-    <section class="grid">
+    <section class="stack">
       <div class="card">
         <h2 class="panel-title">Вывод процесса</h2>
         <pre id="output">Ожидание запуска...</pre>
