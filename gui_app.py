@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import cgi
 import html
 import json
 import csv
@@ -27,6 +28,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_DATASET = ROOT_DIR / "synthetic_data.csv"
 REPORT_FILE = ROOT_DIR / "ml_optimizer_knn_report.txt"
 LOCAL_DASHBOARD_FILE = ROOT_DIR / "ml_optimizer_dashboard.html"
+UPLOAD_DIR = ROOT_DIR / ".uploads"
 HOST = "127.0.0.1"
 START_PORT = 8765
 MAX_ROWS_FOR_PREVIEW = 5000
@@ -268,11 +270,13 @@ HTML_PAGE = """<!doctype html>
     <section class="card" style="margin-bottom: 18px;">
       <label for="dataset">CSV-файл для анализа</label>
       <input id="dataset" type="text" value="__DEFAULT_DATASET__" spellcheck="false">
+      <input id="filePicker" type="file" accept=".csv,text/csv" hidden>
       <div class="row">
-        <button class="primary" id="runBtn">Запустить анализ</button>
-        <button class="secondary" id="generateBtn">Сгенерировать CSV</button>
-        <button class="secondary" id="defaultBtn">Подставить synthetic_data.csv</button>
-        <button class="secondary" id="refreshBtn">Обновить данные</button>
+        <button class="primary" id="runBtn" title="Запускает Rust-анализ выбранного CSV-файла.">Запустить анализ</button>
+        <button class="secondary" id="browseBtn" title="Открывает выбор файла через Finder и загружает выбранный CSV в приложение.">Выбрать через Finder</button>
+        <button class="secondary" id="generateBtn" title="Создаёт новый синтетический CSV по указанному пути.">Сгенерировать CSV</button>
+        <button class="secondary" id="defaultBtn" title="Подставляет стандартный файл synthetic_data.csv из папки проекта.">Подставить synthetic_data.csv</button>
+        <button class="secondary" id="refreshBtn" title="Перечитывает CSV и обновляет предпросмотр, графики и сводку.">Обновить данные</button>
       </div>
       <div class="status" id="status">Загрузка состояния...</div>
       <div class="meta">Если файл не существует, Rust-приложение само сгенерирует синтетический CSV.</div>
@@ -330,7 +334,9 @@ HTML_PAGE = """<!doctype html>
     const previewMetaEl = document.getElementById("previewMeta");
     const previewHeadEl = document.getElementById("previewHead");
     const previewBodyEl = document.getElementById("previewBody");
+    const filePicker = document.getElementById("filePicker");
     const runBtn = document.getElementById("runBtn");
+    const browseBtn = document.getElementById("browseBtn");
     const generateBtn = document.getElementById("generateBtn");
     const defaultBtn = document.getElementById("defaultBtn");
     const refreshBtn = document.getElementById("refreshBtn");
@@ -548,16 +554,45 @@ HTML_PAGE = """<!doctype html>
       await loadPreview();
     }
 
+    async function uploadSelectedFile(file) {
+      if (!file) {
+        return;
+      }
+      if (appMode === "local") {
+        statusEl.textContent = "В standalone-режиме выбор файла через Finder недоступен. Используйте browser mode.";
+        return;
+      }
+      const formData = new FormData();
+      formData.append("dataset_file", file);
+      const response = await fetch("/upload", {
+        method: "POST",
+        body: formData
+      });
+      const data = await response.json();
+      statusEl.textContent = data.status;
+      if (data.ok && data.dataset) {
+        datasetInput.value = data.dataset;
+        await loadPreview();
+      }
+    }
+
     runBtn.addEventListener("click", runAnalysis);
+    browseBtn.addEventListener("click", () => filePicker.click());
     generateBtn.addEventListener("click", generateCsv);
     defaultBtn.addEventListener("click", () => {
       datasetInput.value = defaultDataset;
       loadPreview();
     });
     refreshBtn.addEventListener("click", loadPreview);
+    filePicker.addEventListener("change", async (event) => {
+      const [file] = event.target.files || [];
+      await uploadSelectedFile(file);
+      event.target.value = "";
+    });
 
     if (appMode === "local") {
       runBtn.disabled = true;
+      browseBtn.disabled = true;
       document.getElementById("modeHint").textContent = "Это локальный standalone-дашборд без сервера. Для интерактивного запуска анализа используйте browser mode.";
       fetchState();
     } else {
@@ -742,6 +777,15 @@ def generate_synthetic_csv_file(output_path: Path, num_rows: int = 10_000) -> No
             score = round(random.uniform(0, 100), 2)
             experience = random.randint(0, max(age - 22, 1))
             writer.writerow([index, age, salary, department_id, score, experience])
+
+
+def save_uploaded_csv(filename: str, content: bytes) -> Path:
+    safe_name = Path(filename or "uploaded.csv").name
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(safe_name).stem) or "uploaded"
+    destination = UPLOAD_DIR / f"{int(time.time() * 1000)}_{stem}.csv"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(content)
+    return destination
 
 
 def load_csv_preview(dataset_raw: str, max_rows: int = 8) -> dict[str, object]:
@@ -996,6 +1040,52 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self) -> None:
+        if self.path == "/upload":
+            content_type = self.headers.get("Content-Type", "")
+            if "multipart/form-data" not in content_type:
+                self._write_json(
+                    {"ok": False, "status": "Ожидалась загрузка файла в формате multipart/form-data."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            try:
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={
+                        "REQUEST_METHOD": "POST",
+                        "CONTENT_TYPE": content_type,
+                        "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
+                    },
+                )
+                upload_field = form["dataset_file"] if "dataset_file" in form else None
+                if upload_field is None or not getattr(upload_field, "file", None):
+                    raise ValueError("Файл не был передан.")
+
+                filename = upload_field.filename or "uploaded.csv"
+                if not filename.lower().endswith(".csv"):
+                    raise ValueError("Нужно выбрать CSV-файл.")
+
+                content = upload_field.file.read()
+                if not content:
+                    raise ValueError("Выбран пустой файл.")
+
+                saved_path = save_uploaded_csv(filename, content)
+                summary, charts = load_dataset_preview(str(saved_path))
+                STATE.update_preview(summary, charts)
+                STATE.set_preview(load_csv_preview(str(saved_path)))
+                self._write_json(
+                    {
+                        "ok": True,
+                        "status": f"Файл загружен через Finder: {saved_path.name}",
+                        "dataset": str(saved_path),
+                    },
+                    HTTPStatus.OK,
+                )
+            except Exception as exc:
+                self._write_json({"ok": False, "status": f"Не удалось загрузить CSV: {exc}"}, HTTPStatus.BAD_REQUEST)
+            return
+
         if self.path == "/preview":
             length = int(self.headers.get("Content-Length", "0"))
             raw_body = self.rfile.read(length).decode("utf-8")

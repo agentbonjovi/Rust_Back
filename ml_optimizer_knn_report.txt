@@ -1,7 +1,7 @@
 ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT
 ================================================
 
-Дата: 2026-03-28 16:46:55
+Дата: 2026-04-21 21:10:32
 Файл данных: /Users/r2d2/Documents/GitHub/Rust_Back/synthetic_data.csv
 
 KNN параметры: k=5
@@ -16,19 +16,19 @@ age:
    Data type: Categorical
    Distribution: Normal
    Count: 10000
-   Mean: 35.030602
-   Std: 9.481170
+   Mean: 35.184101
+   Std: 9.660497
    Min: 18.000000
-   Max: 71.000000
-   Unique values: 52
+   Max: 73.000000
+   Unique values: 53
    Null fraction: 0.000000
 
 department_id:
    Data type: Categorical
    Distribution: Uniform
    Count: 10000
-   Mean: 10.395400
-   Std: 5.757251
+   Mean: 10.473700
+   Std: 5.750513
    Min: 1.000000
    Max: 20.000000
    Unique values: 20
@@ -49,75 +49,75 @@ salary:
    Data type: Integer
    Distribution: Skewed
    Count: 10000
-   Mean: 398137.843750
-   Std: 3953063.239516
-   Min: 50001.000000
-   Max: 323585108.000000
-   Unique values: 9688
+   Mean: 440734.375000
+   Std: 4293904.170720
+   Min: 50005.000000
+   Max: 276792268.000000
+   Unique values: 9681
    Null fraction: 0.000000
 
 score:
    Data type: Float
    Distribution: Uniform
    Count: 10000
-   Mean: 50.199108
-   Std: 28.768773
-   Min: 0.000000
-   Max: 99.990000
-   Unique values: 6349
+   Mean: 49.921749
+   Std: 28.964443
+   Min: 0.010000
+   Max: 99.950000
+   Unique values: 6291
    Null fraction: 0.000000
 
 years_experience:
    Data type: Categorical
    Distribution: Skewed
    Count: 10000
-   Mean: 6.725000
-   Std: 6.659956
+   Mean: 6.887600
+   Std: 6.747418
    Min: 0.000000
-   Max: 41.000000
-   Unique values: 41
+   Max: 47.000000
+   Unique values: 45
    Null fraction: 0.000000
 
 СВОДКА ПО ПРЕДИКАТАМ:
 
-1. Predicate { column: "age", operator: Eq, value: 35.030601501464844, value2: None }
-   Actual: 0.000000, KNN: 0.037811, Hist: 0.044000, Approx: 0.010000
-   Error KNN: 0.037811, Error Hist: 0.044000, Error Approx: 0.010000
+1. Predicate { column: "age", operator: Eq, value: 35.18410110473633, value2: None }
+   Actual: 0.000000, KNN: 0.038534, Hist: 0.041418, Approx: 0.010000
+   Error KNN: 0.038534, Error Hist: 0.041418, Error Approx: 0.010000
    Recommended scan: Index Scan
 
-2. Predicate { column: "age", operator: Lt, value: 25.549431036601916, value2: None }
-   Actual: 0.171800, KNN: 0.135836, Hist: 0.164680, Approx: 0.330000
-   Error KNN: 0.035964, Error Hist: 0.007120, Error Approx: 0.158200
+2. Predicate { column: "age", operator: Lt, value: 25.523603675965433, value2: None }
+   Actual: 0.175000, KNN: 0.171257, Hist: 0.181465, Approx: 0.330000
+   Error KNN: 0.003743, Error Hist: 0.006465, Error Approx: 0.155000
    Recommended scan: Index Scan
 
-3. Predicate { column: "age", operator: Gt, value: 39.77118673389631, value2: None }
-   Actual: 0.320400, KNN: 0.253454, Hist: 0.304795, Approx: 0.330000
-   Error KNN: 0.066946, Error Hist: 0.015605, Error Approx: 0.009600
-   Recommended scan: Bitmap Scan
-
-4. Predicate { column: "age", operator: Between, value: 27.481170464862927, value2: Some(61.51882953513707) }
-   Actual: 0.771500, KNN: 0.638479, Hist: 0.774787, Approx: 0.250000
-   Error KNN: 0.133021, Error Hist: 0.003287, Error Approx: 0.521500
+3. Predicate { column: "age", operator: Gt, value: 40.014349819121776, value2: None }
+   Actual: 0.292300, KNN: 0.330850, Hist: 0.328578, Approx: 0.330000
+   Error KNN: 0.038550, Error Hist: 0.036278, Error Approx: 0.037700
    Recommended scan: Seq Scan
 
-5. Predicate { column: "department_id", operator: Eq, value: 10.395400047302246, value2: None }
-   Actual: 0.000000, KNN: 0.047399, Hist: 0.053895, Approx: 0.010000
-   Error KNN: 0.047399, Error Hist: 0.053895, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-6. Predicate { column: "department_id", operator: Lt, value: 4.6381493962888865, value2: None }
-   Actual: 0.207300, KNN: 0.167674, Hist: 0.198236, Approx: 0.330000
-   Error KNN: 0.039626, Error Hist: 0.009064, Error Approx: 0.122700
-   Recommended scan: Index Scan
-
-7. Predicate { column: "department_id", operator: Gt, value: 13.274025372808925, value2: None }
-   Actual: 0.342800, KNN: 0.306366, Hist: 0.346727, Approx: 0.330000
-   Error KNN: 0.036434, Error Hist: 0.003927, Error Approx: 0.012800
+4. Predicate { column: "age", operator: Between, value: 27.660497428770896, value2: Some(63.339502571229104) }
+   Actual: 0.769500, KNN: 0.424427, Hist: 0.766577, Approx: 0.250000
+   Error KNN: 0.345073, Error Hist: 0.002923, Error Approx: 0.519500
    Recommended scan: Seq Scan
 
-8. Predicate { column: "department_id", operator: Between, value: 6.75725065101336, value2: Some(14.24274934898664) }
-   Actual: 0.402100, KNN: 0.569270, Hist: 0.396074, Approx: 0.250000
-   Error KNN: 0.167170, Error Hist: 0.006026, Error Approx: 0.152100
+5. Predicate { column: "department_id", operator: Eq, value: 10.473699569702148, value2: None }
+   Actual: 0.000000, KNN: 0.046134, Hist: 0.051368, Approx: 0.010000
+   Error KNN: 0.046134, Error Hist: 0.051368, Error Approx: 0.010000
+   Recommended scan: Index Scan
+
+6. Predicate { column: "department_id", operator: Lt, value: 4.723186101204993, value2: None }
+   Actual: 0.202000, KNN: 0.180039, Hist: 0.197569, Approx: 0.330000
+   Error KNN: 0.021961, Error Hist: 0.004431, Error Approx: 0.128000
+   Recommended scan: Index Scan
+
+7. Predicate { column: "department_id", operator: Gt, value: 13.348956303950725, value2: None }
+   Actual: 0.347500, KNN: 0.355308, Hist: 0.347555, Approx: 0.330000
+   Error KNN: 0.007808, Error Hist: 0.000055, Error Approx: 0.017500
+   Recommended scan: Seq Scan
+
+8. Predicate { column: "department_id", operator: Between, value: 6.7505134684971555, value2: Some(14.249486531502844) }
+   Actual: 0.402100, KNN: 0.364180, Hist: 0.396746, Approx: 0.250000
+   Error KNN: 0.037920, Error Hist: 0.005354, Error Approx: 0.152100
    Recommended scan: Seq Scan
 
 9. Predicate { column: "id", operator: Eq, value: 4999.5, value2: None }
@@ -126,8 +126,8 @@ years_experience:
    Recommended scan: Index Scan
 
 10. Predicate { column: "id", operator: Lt, value: 2112.6041757624853, value2: None }
-   Actual: 0.211300, KNN: 0.204650, Hist: 0.211282, Approx: 0.330000
-   Error KNN: 0.006650, Error Hist: 0.000018, Error Approx: 0.118700
+   Actual: 0.211300, KNN: 0.211415, Hist: 0.211282, Approx: 0.330000
+   Error KNN: 0.000115, Error Hist: 0.000018, Error Approx: 0.118700
    Recommended scan: Index Scan
 
 11. Predicate { column: "id", operator: Gt, value: 6442.947912118758, value2: None }
@@ -136,72 +136,72 @@ years_experience:
    Recommended scan: Seq Scan
 
 12. Predicate { column: "id", operator: Between, value: 2886.8958242375147, value2: Some(7112.104175762485) }
-   Actual: 0.422600, KNN: 0.182723, Hist: 0.422563, Approx: 0.250000
-   Error KNN: 0.239877, Error Hist: 0.000037, Error Approx: 0.172600
-   Recommended scan: Index Scan
+   Actual: 0.422600, KNN: 0.271236, Hist: 0.422563, Approx: 0.250000
+   Error KNN: 0.151364, Error Hist: 0.000037, Error Approx: 0.172600
+   Recommended scan: Bitmap Scan
 
-13. Predicate { column: "salary", operator: Eq, value: 398137.84375, value2: None }
+13. Predicate { column: "salary", operator: Eq, value: 440734.375, value2: None }
    Actual: 0.000000, KNN: 0.000100, Hist: 0.000000, Approx: 0.010000
    Error KNN: 0.000100, Error Hist: 0.000000, Error Approx: 0.010000
    Recommended scan: Index Scan
 
-14. Predicate { column: "salary", operator: Lt, value: 50001.0, value2: None }
-   Actual: 0.000000, KNN: 0.087744, Hist: 0.000000, Approx: 0.330000
-   Error KNN: 0.087744, Error Hist: 0.000000, Error Approx: 0.330000
+14. Predicate { column: "salary", operator: Lt, value: 50005.0, value2: None }
+   Actual: 0.000000, KNN: 0.069876, Hist: 0.000000, Approx: 0.330000
+   Error KNN: 0.069876, Error Hist: 0.000000, Error Approx: 0.330000
    Recommended scan: Index Scan
 
-15. Predicate { column: "salary", operator: Gt, value: 2374669.4635082064, value2: None }
-   Actual: 0.020100, KNN: 0.283889, Hist: 0.856626, Approx: 0.330000
-   Error KNN: 0.263789, Error Hist: 0.836526, Error Approx: 0.309900
-   Recommended scan: Bitmap Scan
-
-16. Predicate { column: "salary", operator: Between, value: 4003064.2395164133, value2: Some(319632044.76048356) }
-   Actual: 0.011200, KNN: 0.285308, Hist: 0.756171, Approx: 0.250000
-   Error KNN: 0.274108, Error Hist: 0.744971, Error Approx: 0.238800
-   Recommended scan: Bitmap Scan
-
-17. Predicate { column: "score", operator: Eq, value: 50.1991081237793, value2: None }
-   Actual: 0.000000, KNN: 0.000194, Hist: 0.009921, Approx: 0.010000
-   Error KNN: 0.000194, Error Hist: 0.009921, Error Approx: 0.010000
+15. Predicate { column: "salary", operator: Gt, value: 2587686.460360081, value2: None }
+   Actual: 0.019900, KNN: 0.187570, Hist: 0.817227, Approx: 0.330000
+   Error KNN: 0.167670, Error Hist: 0.797327, Error Approx: 0.310100
    Recommended scan: Index Scan
 
-18. Predicate { column: "score", operator: Lt, value: 21.430335592626378, value2: None }
-   Actual: 0.211500, KNN: 0.276229, Hist: 0.209210, Approx: 0.330000
-   Error KNN: 0.064729, Error Hist: 0.002290, Error Approx: 0.118500
-   Recommended scan: Bitmap Scan
+16. Predicate { column: "salary", operator: Between, value: 4343909.170720162, value2: Some(272498363.82927984) }
+   Actual: 0.012800, KNN: 0.196990, Hist: 0.690706, Approx: 0.250000
+   Error KNN: 0.184190, Error Hist: 0.677906, Error Approx: 0.237200
+   Recommended scan: Index Scan
 
-19. Predicate { column: "score", operator: Gt, value: 64.58349438935576, value2: None }
-   Actual: 0.354700, KNN: 0.314005, Hist: 0.354604, Approx: 0.330000
-   Error KNN: 0.040695, Error Hist: 0.000096, Error Approx: 0.024700
+17. Predicate { column: "score", operator: Eq, value: 49.921749114990234, value2: None }
+   Actual: 0.000000, KNN: 0.000232, Hist: 0.009165, Approx: 0.010000
+   Error KNN: 0.000232, Error Hist: 0.009165, Error Approx: 0.010000
+   Recommended scan: Index Scan
+
+18. Predicate { column: "score", operator: Lt, value: 20.957306002032755, value2: None }
+   Actual: 0.212900, KNN: 0.213608, Hist: 0.212684, Approx: 0.330000
+   Error KNN: 0.000708, Error Hist: 0.000216, Error Approx: 0.117100
+   Recommended scan: Index Scan
+
+19. Predicate { column: "score", operator: Gt, value: 64.40397067146897, value2: None }
+   Actual: 0.354000, KNN: 0.377672, Hist: 0.353823, Approx: 0.330000
+   Error KNN: 0.023672, Error Hist: 0.000177, Error Approx: 0.024000
    Recommended scan: Seq Scan
 
-20. Predicate { column: "score", operator: Between, value: 28.76877253115292, value2: Some(71.22122746884708) }
-   Actual: 0.426200, KNN: 0.447649, Hist: 0.428551, Approx: 0.250000
-   Error KNN: 0.021449, Error Hist: 0.002351, Error Approx: 0.176200
+20. Predicate { column: "score", operator: Between, value: 28.97444311295748, value2: Some(70.98555688704252) }
+   Actual: 0.415600, KNN: 0.467644, Hist: 0.417275, Approx: 0.250000
+   Error KNN: 0.052044, Error Hist: 0.001675, Error Approx: 0.165600
    Recommended scan: Seq Scan
 
-21. Predicate { column: "years_experience", operator: Eq, value: 6.724999904632568, value2: None }
-   Actual: 0.000000, KNN: 0.048114, Hist: 0.044000, Approx: 0.010000
-   Error KNN: 0.048114, Error Hist: 0.044000, Error Approx: 0.010000
+21. Predicate { column: "years_experience", operator: Eq, value: 6.887599945068359, value2: None }
+   Actual: 0.000000, KNN: 0.047773, Hist: 0.065277, Approx: 0.010000
+   Error KNN: 0.047773, Error Hist: 0.065277, Error Approx: 0.010000
    Recommended scan: Index Scan
 
-22. Predicate { column: "years_experience", operator: Lt, value: 0.06504412502500934, value2: None }
-   Actual: 0.137700, KNN: 0.013121, Hist: 0.011270, Approx: 0.330000
-   Error KNN: 0.124579, Error Hist: 0.126430, Error Approx: 0.192300
+22. Predicate { column: "years_experience", operator: Lt, value: 0.14018228265231603, value2: None }
+   Actual: 0.132500, KNN: 0.005209, Hist: 0.020717, Approx: 0.330000
+   Error KNN: 0.127291, Error Hist: 0.111783, Error Approx: 0.197500
    Recommended scan: Index Scan
 
-23. Predicate { column: "years_experience", operator: Gt, value: 10.054977794436347, value2: None }
-   Actual: 0.240600, KNN: 0.241597, Hist: 0.248106, Approx: 0.330000
-   Error KNN: 0.000997, Error Hist: 0.007506, Error Approx: 0.089400
-   Recommended scan: Index Scan
+23. Predicate { column: "years_experience", operator: Gt, value: 10.261308776276381, value2: None }
+   Actual: 0.253500, KNN: 0.290831, Hist: 0.262687, Approx: 0.330000
+   Error KNN: 0.037331, Error Hist: 0.009187, Error Approx: 0.076500
+   Recommended scan: Bitmap Scan
 
-24. Predicate { column: "years_experience", operator: Between, value: 6.659955779607559, value2: Some(34.34004422039244) }
-   Actual: 0.408200, KNN: 0.489371, Hist: 0.385439, Approx: 0.250000
-   Error KNN: 0.081171, Error Hist: 0.022761, Error Approx: 0.158200
+24. Predicate { column: "years_experience", operator: Between, value: 6.747417662416043, value2: Some(40.25258233758396) }
+   Actual: 0.419500, KNN: 0.386388, Hist: 0.391742, Approx: 0.250000
+   Error KNN: 0.033112, Error Hist: 0.027758, Error Approx: 0.169500
    Recommended scan: Seq Scan
 
 
 ИТОГОВАЯ СТАТИСТИКА:
-Средняя ошибка KNN: 0.075958
-Средняя ошибка гистограммы: 0.080833
-Средняя ошибка приближенной оценки: 0.124662
+Средняя ошибка KNN: 0.059985
+Средняя ошибка гистограммы: 0.077041
+Средняя ошибка приближенной оценки: 0.125596
