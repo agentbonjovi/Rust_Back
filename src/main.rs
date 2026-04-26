@@ -73,7 +73,7 @@ struct Predicate {
     value2: Option<f64>, // для BETWEEN
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Operator {
     Eq,           // =
     Ne,           // <>
@@ -83,6 +83,21 @@ enum Operator {
     Ge,           // >=
     Between,      // BETWEEN
     Like,         // LIKE (упрощенно)
+}
+
+impl Operator {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Operator::Eq => "=",
+            Operator::Ne => "<>",
+            Operator::Lt => "<",
+            Operator::Le => "<=",
+            Operator::Gt => ">",
+            Operator::Ge => ">=",
+            Operator::Between => "BETWEEN",
+            Operator::Like => "LIKE",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -383,6 +398,59 @@ impl KNNSelectivityModel {
         }
     }
     
+    // Возвращает важность каждого признака как процент в общей сумме.
+    //
+    // Чтобы не зависеть от единиц измерения (зарплата в миллионах vs operator_eq
+    // в {0,1}), сначала нормализуем каждый признак к [0,1] по его min..max
+    // в обучающей выборке, а потом считаем std нормализованных значений.
+    // Это и есть честный "вес": чем сильнее признак варьируется относительно
+    // своего диапазона, тем сильнее он раздвигает соседей в евклидовом расстоянии.
+    fn feature_importance(&self) -> Vec<(String, f64, f64)> {
+        let n_features = self.feature_names.len();
+        if self.knn.training_data.is_empty() || n_features == 0 {
+            return Vec::new();
+        }
+        let n = self.knn.training_data.len() as f64;
+        let mut stds = Vec::with_capacity(n_features);
+        for fi in 0..n_features {
+            // диапазон значений в обучающей выборке
+            let mut fmin = f64::INFINITY;
+            let mut fmax = f64::NEG_INFINITY;
+            for ex in &self.knn.training_data {
+                let v = ex.features.get(fi).copied().unwrap_or(0.0);
+                if v < fmin { fmin = v; }
+                if v > fmax { fmax = v; }
+            }
+            let range = fmax - fmin;
+            if range <= 1e-12 {
+                stds.push(0.0);
+                continue;
+            }
+            // std нормализованных к [0,1] значений
+            let mut sum = 0.0;
+            let mut sumsq = 0.0;
+            for ex in &self.knn.training_data {
+                let v = ex.features.get(fi).copied().unwrap_or(0.0);
+                let norm = (v - fmin) / range;
+                sum += norm;
+                sumsq += norm * norm;
+            }
+            let mean = sum / n;
+            let var = (sumsq / n) - mean * mean;
+            stds.push(var.max(0.0).sqrt());
+        }
+        let total: f64 = stds.iter().sum();
+        let mut result: Vec<(String, f64, f64)> = self.feature_names.iter()
+            .zip(stds.iter())
+            .map(|(name, &std)| {
+                let pct = if total > 0.0 { std / total * 100.0 } else { 0.0 };
+                (name.clone(), std, pct)
+            })
+            .collect();
+        result.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        result
+    }
+
     // Оценивает качество модели
     fn evaluate(&self, test_predicates: &[(Predicate, f64, ColumnMetadata)]) -> f64 {
         if test_predicates.is_empty() {
@@ -608,32 +676,44 @@ impl DataAnalyzer {
         }
     }
     
-    // Обучает KNN на исторических данных
+    // Обучает KNN на исторических данных (без вывода — отчёт печатает main)
     fn train_knn_model(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("\n🧠 Обучение KNN модели на исторических данных...");
-        
-        // Генерируем обучающие примеры из данных
         let mut examples = Vec::new();
-        
         for (col_name, values) in &self.data {
             if values.is_empty() || !self.metadata.contains_key(col_name) {
                 continue;
             }
-            
             let metadata = self.metadata.get(col_name).unwrap();
-            
-            // Генерируем разные типы предикатов для обучения
             let predicates = self.generate_training_predicates(col_name, values, metadata);
             examples.extend(predicates);
         }
-        
-        // Добавляем примеры в модель
         for example in examples {
             self.knn_model.add_training_example(example);
         }
-        
-        println!("✅ KNN модель обучена ({} примеров)", self.knn_model.knn.training_data.len());
         Ok(())
+    }
+
+    // Сводка обучающей выборки: разбивка по операторам и по столбцам.
+    fn training_breakdown(&self) -> (Vec<(Operator, usize)>, Vec<(String, usize)>) {
+        let mut by_op: HashMap<Operator, usize> = HashMap::new();
+        let mut by_col: HashMap<String, usize> = HashMap::new();
+        for ex in &self.knn_model.knn.training_data {
+            *by_op.entry(ex.predicate_type).or_insert(0) += 1;
+            *by_col.entry(ex.column_name.clone()).or_insert(0) += 1;
+        }
+        let order = [Operator::Eq, Operator::Lt, Operator::Le, Operator::Gt,
+                     Operator::Ge, Operator::Between, Operator::Ne, Operator::Like];
+        let mut ops: Vec<(Operator, usize)> = order.iter()
+            .filter_map(|op| by_op.get(op).map(|&c| (*op, c)))
+            .collect();
+        for (op, c) in by_op.iter() {
+            if !ops.iter().any(|(o, _)| o == op) {
+                ops.push((*op, *c));
+            }
+        }
+        let mut cols: Vec<(String, usize)> = by_col.into_iter().collect();
+        cols.sort_by(|a, b| a.0.cmp(&b.0));
+        (ops, cols)
     }
     
     // Генерация обучающих примероа из реальных данных
@@ -910,123 +990,167 @@ impl DataAnalyzer {
         matches as f64 / values.len() as f64
     }
     
-    // Запускает полный анализ с KNN
+    // Запускает полный анализ с KNN. Возвращает результаты;
+    // печать структурированного отчёта берёт на себя main().
     fn evaluate_predictors_with_knn(&mut self) -> Result<Vec<PredicateSelectivity>, Box<dyn std::error::Error>> {
-        // Сначала вычисляем статистики
         self.compute_statistics()?;
-        
-        // Обучаем KNN модель
         self.train_knn_model()?;
-        
-        // Тестируем на новых предикатах
+
         let predicates = self.generate_predicates();
         if predicates.is_empty() {
             return Err("Не удалось сгенерировать предикаты: в CSV нет подходящих числовых столбцов".into());
         }
+
         let mut results = Vec::new();
-        
-        println!("\n🔬 Анализ селективности предикатов (с KNN)\n");
-        println!("{:<15} {:<10} {:<10} {:<10} {:<10} {:<12} {:<8}", 
-                 "Предикат", "Реальная", "KNN", "Гистогр.", "Приближ.", "Реком.скан", "KNN ошибка");
-        
-        // Разделим на обучающие и тестовые для оценки
-        let test_size = (predicates.len() / 3).max(1);
-        let test_predicates: Vec<_> = predicates.iter().take(test_size).collect();
-        
-        let mut test_data = Vec::new();
-        for predicate in test_predicates {
-            if let Some(metadata) = self.metadata.get(&predicate.column) {
-                let actual = self.compute_actual_selectivity(predicate);
-                test_data.push((predicate.clone(), actual, metadata.clone()));
-            }
-        }
-        
-        // Оцениваем качество
-        let knn_error = self.knn_model.evaluate(&test_data);
-        println!("📊 Средняя ошибка KNN на тестовых данных: {:.4}", knn_error);
-        
-        // Предсказания для всех предикатов
         for predicate in predicates {
             let actual = self.compute_actual_selectivity(&predicate);
             let ml_est = self.estimate_selectivity_ml(&predicate);
             let hist_est = self.estimate_selectivity_histogram(&predicate);
             let approx_est = self.estimate_selectivity_approx(&predicate);
-            
-            let error_ml = (actual - ml_est).abs();
-            
             let recommended = self.recommend_scan_method(&predicate, ml_est);
-            
             results.push(PredicateSelectivity {
                 predicate: predicate.clone(),
                 actual_selectivity: actual,
                 ml_estimate: ml_est,
                 histogram_estimate: hist_est,
                 approx_estimate: approx_est,
-                error_ml,
+                error_ml: (actual - ml_est).abs(),
                 error_histogram: (actual - hist_est).abs(),
                 error_approx: (actual - approx_est).abs(),
                 recommended_scan: recommended,
             });
-            
-            // Формируем строку предиката для вывода
-            let pred_str = match predicate.operator {
-                Operator::Eq => format!("{} = {:.1}", predicate.column, predicate.value),
-                Operator::Lt => format!("{} < {:.1}", predicate.column, predicate.value),
-                Operator::Gt => format!("{} > {:.1}", predicate.column, predicate.value),
-                Operator::Between => format!("{} BETWEEN {:.1} AND {:.1}", 
-                    predicate.column, predicate.value, predicate.value2.unwrap_or(0.0)),
-                _ => format!("{} op {}", predicate.column, predicate.value),
-            };
-            
-            println!("{:<15} {:<10.3} {:<10.3} {:<10.3} {:<10.3} {:<12} {:<8.4}",
-                     &pred_str[..15.min(pred_str.len())],
-                     actual,
-                     ml_est,
-                     hist_est,
-                     approx_est,
-                     recommended.as_str(),
-                     error_ml);
         }
-        
-        // Общая статистика
-        let avg_error_ml = results.iter().map(|r| r.error_ml).sum::<f64>() / results.len() as f64;
-        let avg_error_hist = results.iter().map(|r| r.error_histogram).sum::<f64>() / results.len() as f64;
-        let avg_error_approx = results.iter().map(|r| r.error_approx).sum::<f64>() / results.len() as f64;
-        
-        println!("\n📊 Итоговая статистика (с KNN):");
-        println!("   Средняя ошибка KNN: {:.4}", avg_error_ml);
-        println!("   Средняя ошибка гистограммы: {:.4}", avg_error_hist);
-        println!("   Средняя ошибка приближенной оценки: {:.4}", avg_error_approx);
-        
-        if avg_error_approx > 0.0 {
-            println!("   Улучшение точности KNN vs приближенная: {:.2}%", 
-                     (avg_error_approx - avg_error_ml) / avg_error_approx * 100.0);
-        }
-        
         Ok(results)
     }
+}
+
+// ==================== ФОРМАТИРОВАНИЕ ВЫВОДА ====================
+
+fn format_predicate(p: &Predicate) -> String {
+    match p.operator {
+        Operator::Between => format!(
+            "{} BETWEEN {:.2} AND {:.2}",
+            p.column, p.value, p.value2.unwrap_or(0.0)
+        ),
+        _ => format!("{} {} {:.2}", p.column, p.operator.as_str(), p.value),
+    }
+}
+
+fn bar(width: usize, frac: f64) -> String {
+    let filled = (frac.clamp(0.0, 1.0) * width as f64).round() as usize;
+    let empty = width.saturating_sub(filled);
+    "█".repeat(filled) + &"·".repeat(empty)
+}
+
+fn write_analysis<W: Write>(
+    out: &mut W,
+    backend: &str,
+    dataset: &Path,
+    row_count: usize,
+    numeric_columns: &[String],
+    analyzer: &DataAnalyzer,
+    results: &[PredicateSelectivity],
+    elapsed_ms: f64,
+) -> std::io::Result<()> {
+    writeln!(out, "================================================================")?;
+    writeln!(out, "  ML Optimizer — KNN Selectivity Estimator  (backend: {})", backend)?;
+    writeln!(out, "================================================================")?;
+    writeln!(out)?;
+
+    // [1] Загрузка
+    writeln!(out, "[1/4] Загрузка данных")?;
+    writeln!(out, "      Файл:    {}", dataset.display())?;
+    writeln!(out, "      Строк:   {}", row_count)?;
+    writeln!(out, "      Числовые столбцы ({}): {}", numeric_columns.len(), numeric_columns.join(", "))?;
+    writeln!(out)?;
+
+    // [2] Обучение
+    let (by_op, by_col) = analyzer.training_breakdown();
+    let total_train = analyzer.knn_model.knn.training_data.len();
+    writeln!(out, "[2/4] Обучение KNN-модели")?;
+    writeln!(out, "      k = {}  (взвешенное по евклидову расстоянию)", analyzer.knn_model.knn.k)?;
+    writeln!(out, "      Всего обучающих примеров: {}", total_train)?;
+    writeln!(out, "      Признаков на пример:      {}", analyzer.knn_model.feature_names.len())?;
+    writeln!(out, "      Разбивка по операторам предикатов:")?;
+    for (op, count) in &by_op {
+        writeln!(out, "        {:<8} : {:>4}", op.as_str(), count)?;
+    }
+    writeln!(out, "      Разбивка по столбцам:")?;
+    for (col, count) in &by_col {
+        writeln!(out, "        {:<20} : {:>4}", col, count)?;
+    }
+    writeln!(out)?;
+
+    // [3] Важность признаков
+    let importance = analyzer.knn_model.feature_importance();
+    writeln!(out, "[3/4] Приоритеты признаков (что модель считает важным)")?;
+    writeln!(out, "      KNN использует евклидово расстояние, поэтому 'вес' признака =")?;
+    writeln!(out, "      его std в обучающей выборке: чем сильнее признак варьируется,")?;
+    writeln!(out, "      тем сильнее он влияет на расстояние и предсказание.")?;
+    writeln!(out)?;
+    writeln!(out, "      #  Признак                  Std       Важность")?;
+    writeln!(out, "      ---------------------------------------------------------------")?;
+    let max_pct = importance.first().map(|(_, _, p)| *p).unwrap_or(0.0).max(1e-9);
+    for (i, (name, std, pct)) in importance.iter().enumerate() {
+        writeln!(out, "      {:>2}  {:<22}  {:>7.4}   {:>5.1}%  {}",
+                 i + 1, name, std, pct, bar(20, pct / max_pct))?;
+    }
+    writeln!(out)?;
+    writeln!(out, "      Топ-3 приоритетных признака:")?;
+    for (i, (name, _, pct)) in importance.iter().take(3).enumerate() {
+        writeln!(out, "        {}. {:<22} ({:.1}%)", i + 1, name, pct)?;
+    }
+    writeln!(out)?;
+
+    // [4] Предсказания
+    writeln!(out, "[4/4] Предсказания на сгенерированных предикатах")?;
+    writeln!(out, "      {:<32} {:>7} {:>7} {:>8} {:>8}  {}",
+             "Предикат", "Реал.", "KNN", "Гистогр.", "Приближ.", "Скан")?;
+    writeln!(out, "      {}", "-".repeat(78))?;
+    for r in results {
+        let pred = format_predicate(&r.predicate);
+        let pred_short: String = pred.chars().take(32).collect();
+        writeln!(out, "      {:<32} {:>7.3} {:>7.3} {:>8.3} {:>8.3}  {}",
+                 pred_short,
+                 r.actual_selectivity,
+                 r.ml_estimate,
+                 r.histogram_estimate,
+                 r.approx_estimate,
+                 r.recommended_scan.as_str())?;
+    }
+    writeln!(out)?;
+
+    // Итог
+    let n = results.len() as f64;
+    let avg_ml = results.iter().map(|r| r.error_ml).sum::<f64>() / n;
+    let avg_hist = results.iter().map(|r| r.error_histogram).sum::<f64>() / n;
+    let avg_approx = results.iter().map(|r| r.error_approx).sum::<f64>() / n;
+    let improvement = if avg_approx > 0.0 { (avg_approx - avg_ml) / avg_approx * 100.0 } else { 0.0 };
+    writeln!(out, "Итог")?;
+    writeln!(out, "----")?;
+    writeln!(out, "  Средняя ошибка KNN:           {:.4}", avg_ml)?;
+    writeln!(out, "  Средняя ошибка гистограммы:   {:.4}", avg_hist)?;
+    writeln!(out, "  Средняя ошибка приближённой:  {:.4}", avg_approx)?;
+    writeln!(out, "  KNN точнее приближённой на:   {:.1}%", improvement)?;
+    writeln!(out, "  Backend:                      {}", backend)?;
+    writeln!(out, "  Время выполнения:             {:.3} мс", elapsed_ms)?;
+    Ok(())
 }
 
 // ==================== ОСНОВНАЯ ФУНКЦИЯ ====================
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 ML Optimizer for PostgreSQL - KNN-based Selectivity Estimator\n");
-    
     let path = env::args()
         .nth(1)
         .unwrap_or_else(|| "synthetic_data.csv".to_string());
     let path = Path::new(&path);
-    
-    // Генерируем синтетические данные, если файл не существует
+
     if !path.exists() {
-        println!("📁 Файл не найден. Генерирую синтетические данные...");
+        println!("Файл не найден, генерирую синтетические данные: {}", path.display());
         let mut generator = DataGenerator::new();
         generator.generate_synthetic_csv(path, 10000)?;
     }
-    
-    println!("📂 Анализирую файл: {}", path.display());
 
-    // Анализируем данные с KNN
     let start = Instant::now();
     let mut analyzer = DataAnalyzer::from_csv(path)?;
     let results = analyzer.evaluate_predictors_with_knn()?;
@@ -1034,91 +1158,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if numeric_columns.is_empty() {
         return Err("В CSV не найдено числовых столбцов для анализа".into());
     }
+    let row_count = analyzer.data.values().map(|v| v.len()).max().unwrap_or(0);
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    
-    // Детальный разбор для нескольких примеров
-    println!("\n🔍 Детальный анализ выборочных предикатов:");
-    
-    for result in results.iter().take(5) {
-        println!("\n   Предикат: {:?}", result.predicate);
-        println!("     Реальная селективность: {:.4}", result.actual_selectivity);
-        println!("     KNN оценка: {:.4} (ошибка: {:.4})", result.ml_estimate, result.error_ml);
-        println!("     Гистограмма: {:.4} (ошибка: {:.4})", result.histogram_estimate, result.error_histogram);
-        println!("     Приближенная: {:.4} (ошибка: {:.4})", result.approx_estimate, result.error_approx);
-        println!("     🎯 Рекомендуемый метод сканирования: {}", result.recommended_scan.as_str());
-        
-        // Объясняем почему выбран этот метод
-        match result.recommended_scan {
-            ScanMethod::SeqScan => {
-                println!("        Причина: Низкая селективность ({:.1}% строк) - дешевле прочитать всю таблицу", 
-                         result.actual_selectivity * 100.0);
-            }
-            ScanMethod::IndexScan => {
-                println!("        Причина: Высокая селективность ({:.1}% строк) - индекс эффективно отфильтрует", 
-                         result.actual_selectivity * 100.0);
-            }
-            ScanMethod::BitmapScan => {
-                println!("        Причина: Средняя селективность ({:.1}% строк) - bitmap scan балансирует I/O", 
-                         result.actual_selectivity * 100.0);
-            }
-        }
-    }
-    
-    // Генерируем отчет
+
+    // Структурированный вывод и в stdout, и в файл — чтобы GUI мог распарсить отчёт.
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    write_analysis(&mut handle, "Rust", path, row_count, &numeric_columns,
+                   &analyzer, &results, elapsed_ms)?;
+
     let report_path = Path::new("ml_optimizer_knn_report.txt");
     let mut report = File::create(report_path)?;
-    
-    writeln!(report, "ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT")?;
-    writeln!(report, "================================================\n")?;
-    writeln!(report, "Backend: Rust")?;
     writeln!(report, "Дата: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))?;
-    writeln!(report, "Файл данных: {}\n", path.display())?;
-    writeln!(report, "KNN параметры: k=5\n")?;
-    writeln!(report, "Количество обучающих примеров: {}\n", analyzer.knn_model.knn.training_data.len())?;
-    writeln!(report, "Числовые столбцы: {}\n", numeric_columns.join(", "))?;
-    writeln!(report, "Время выполнения: {:.3} мс\n", elapsed_ms)?;
-    
-    writeln!(report, "СТАТИСТИКА ПО СТОЛБЦАМ:\n")?;
-    for column_name in &numeric_columns {
-        if let Some(metadata) = analyzer.metadata.get(column_name) {
-            writeln!(report, "{}:", column_name)?;
-            writeln!(report, "   Data type: {}", metadata.data_type.as_str())?;
-            writeln!(report, "   Distribution: {}", metadata.distribution.as_str())?;
-            writeln!(report, "   Count: {}", metadata.stats.count)?;
-            writeln!(report, "   Mean: {:.6}", metadata.stats.mean)?;
-            writeln!(report, "   Std: {:.6}", metadata.stats.std)?;
-            writeln!(report, "   Min: {:.6}", metadata.stats.min)?;
-            writeln!(report, "   Max: {:.6}", metadata.stats.max)?;
-            writeln!(report, "   Unique values: {}", metadata.stats.unique_values)?;
-            writeln!(report, "   Null fraction: {:.6}\n", metadata.stats.null_frac)?;
-        }
-    }
-    
-    writeln!(report, "СВОДКА ПО ПРЕДИКАТАМ:\n")?;
-    for (i, result) in results.iter().enumerate() {
-        writeln!(report, "{}. {:?}", i+1, result.predicate)?;
-        writeln!(report, "   Actual: {:.6}, KNN: {:.6}, Hist: {:.6}, Approx: {:.6}", 
-                 result.actual_selectivity, 
-                 result.ml_estimate, 
-                 result.histogram_estimate,
-                 result.approx_estimate)?;
-        writeln!(report, "   Error KNN: {:.6}, Error Hist: {:.6}, Error Approx: {:.6}", 
-                 result.error_ml, result.error_histogram, result.error_approx)?;
-        writeln!(report, "   Recommended scan: {}\n", result.recommended_scan.as_str())?;
-    }
-    
-    let avg_error_ml = results.iter().map(|r| r.error_ml).sum::<f64>() / results.len() as f64;
-    let avg_error_hist = results.iter().map(|r| r.error_histogram).sum::<f64>() / results.len() as f64;
-    let avg_error_approx = results.iter().map(|r| r.error_approx).sum::<f64>() / results.len() as f64;
-    
-    writeln!(report, "\nИТОГОВАЯ СТАТИСТИКА:")?;
-    writeln!(report, "Средняя ошибка KNN: {:.6}", avg_error_ml)?;
-    writeln!(report, "Средняя ошибка гистограммы: {:.6}", avg_error_hist)?;
-    writeln!(report, "Средняя ошибка приближенной оценки: {:.6}", avg_error_approx)?;
-    
-    println!("\n⏱  Время выполнения (Rust): {:.3} мс", elapsed_ms);
-    println!("\n📄 Отчет сохранен в: {}", report_path.display());
-    println!("\n✅ Анализ с KNN завершен!");
+    writeln!(report)?;
+    write_analysis(&mut report, "Rust", path, row_count, &numeric_columns,
+                   &analyzer, &results, elapsed_ms)?;
+
+    writeln!(handle)?;
+    writeln!(handle, "Отчёт сохранён в: {}", report_path.display())?;
     
     Ok(())
 }

@@ -1,210 +1,89 @@
-ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT
-================================================
+Дата: 2026-04-26 18:14:57
 
-Backend: Python
-Дата: 2026-04-26 11:45:39
-Файл данных: synthetic_data.csv
+================================================================
+  ML Optimizer — KNN Selectivity Estimator  (backend: Python)
+================================================================
 
-KNN параметры: k=5
+[1/4] Загрузка данных
+      Файл:    /Users/r2d2/Documents/GitHub/Rust_Back/synthetic_data.csv
+      Строк:   10000
+      Числовые столбцы (6): age, department_id, id, salary, score, years_experience
 
-Количество обучающих примеров: 480
+[2/4] Обучение KNN-модели
+      k = 5  (взвешенное по евклидову расстоянию)
+      Всего обучающих примеров: 480
+      Признаков на пример:      12
+      Разбивка по операторам предикатов:
+        =        :  120
+        <        :  120
+        >        :  120
+        BETWEEN  :  120
+      Разбивка по столбцам:
+        age                  :   80
+        department_id        :   80
+        id                   :   80
+        salary               :   80
+        score                :   80
+        years_experience     :   80
 
-Числовые столбцы: age, department_id, id, salary, score, years_experience
+[3/4] Приоритеты признаков (что модель считает важным)
+      KNN использует евклидово расстояние, поэтому 'вес' признака =
+      его std в обучающей выборке: чем сильнее признак варьируется,
+      тем сильнее он влияет на расстояние и предсказание.
 
-Время выполнения: 224.353 мс
+      #  Признак                  Std       Важность
+      ---------------------------------------------------------------
+       1  column_unique_ratio      0.4480    10.0%  ████████████████████
+       2  operator_eq              0.4330     9.7%  ███████████████████·
+       3  operator_lt              0.4330     9.7%  ███████████████████·
+       4  operator_gt              0.4330     9.7%  ███████████████████·
+       5  operator_between         0.4330     9.7%  ███████████████████·
+       6  column_max               0.3727     8.3%  █████████████████···
+       7  column_std               0.3727     8.3%  █████████████████···
+       8  column_min               0.3726     8.3%  █████████████████···
+       9  column_mean              0.3722     8.3%  █████████████████···
+      10  value2_normalized        0.3014     6.7%  █████████████·······
+      11  value_normalized         0.2995     6.7%  █████████████·······
+      12  value_vs_mean            0.1940     4.3%  █████████···········
 
-СТАТИСТИКА ПО СТОЛБЦАМ:
+      Топ-3 приоритетных признака:
+        1. column_unique_ratio    (10.0%)
+        2. operator_eq            (9.7%)
+        3. operator_lt            (9.7%)
 
-age:
-   Data type: Categorical
-   Distribution: Normal
-   Count: 10000
-   Mean: 35.030600
-   Std: 9.480700
-   Min: 18.000000
-   Max: 73.000000
-   Unique values: 53
-   Null fraction: 0.000000
+[4/4] Предсказания на сгенерированных предикатах
+      Предикат                           Реал.     KNN Гистогр. Приближ.  Скан
+      ------------------------------------------------------------------------------
+      age = 35.39                        0.000   0.040    0.029    0.010  Index Scan
+      age < 25.74                        0.167   0.147    0.173    0.330  Index Scan
+      age > 40.21                        0.301   0.308    0.324    0.330  Seq Scan
+      age BETWEEN 27.65 AND 65.35        0.777   0.648    0.770    0.250  Seq Scan
+      department_id = 10.52              0.000   0.048    0.055    0.010  Index Scan
+      department_id < 4.73               0.202   0.189    0.198    0.330  Index Scan
+      department_id > 13.41              0.353   0.340    0.350    0.330  Seq Scan
+      department_id BETWEEN 6.78 AND 1   0.404   0.576    0.395    0.250  Seq Scan
+      id = 4999.50                       0.000   0.000    0.000    0.010  Index Scan
+      id < 2112.75                       0.211   0.209    0.211    0.330  Index Scan
+      id > 6442.88                       0.356   0.355    0.356    0.330  Seq Scan
+      id BETWEEN 2886.75 AND 7112.25     0.423   0.241    0.423    0.250  Index Scan
+      salary = 721449.90                 0.000   0.000    0.000    0.010  Index Scan
+      salary < 50026.00                  0.000   0.073    0.000    0.330  Index Scan
+      salary > 13288444.01               0.005   0.236    0.893    0.330  Index Scan
+      salary BETWEEN 25184014.23 AND 2   0.003   0.161    0.797    0.250  Index Scan
+      score = 49.92                      0.000   0.000    0.011    0.010  Index Scan
+      score < 21.01                      0.211   0.200    0.210    0.330  Index Scan
+      score > 64.37                      0.355   0.347    0.354    0.330  Seq Scan
+      score BETWEEN 28.93 AND 71.07      0.422   0.373    0.423    0.250  Seq Scan
+      years_experience = 6.74            0.000   0.047    0.047    0.010  Index Scan
+      years_experience < 0.06            0.136   0.030    0.010    0.330  Index Scan
+      years_experience > 10.08           0.240   0.320    0.251    0.330  Seq Scan
+      years_experience BETWEEN 6.68 AN   0.406   0.410    0.416    0.250  Seq Scan
 
-department_id:
-   Data type: Categorical
-   Distribution: Uniform
-   Count: 10000
-   Mean: 10.395400
-   Std: 5.756966
-   Min: 1.000000
-   Max: 20.000000
-   Unique values: 20
-   Null fraction: 0.000000
-
-id:
-   Data type: Integer
-   Distribution: Uniform
-   Count: 10000
-   Mean: 4999.500000
-   Std: 2886.751332
-   Min: 0.000000
-   Max: 9999.000000
-   Unique values: 10000
-   Null fraction: 0.000000
-
-salary:
-   Data type: Integer
-   Distribution: Skewed
-   Count: 10000
-   Mean: 398137.911800
-   Std: 3952865.319930
-   Min: 50001.000000
-   Max: 323585108.000000
-   Unique values: 9688
-   Null fraction: 0.000000
-
-score:
-   Data type: Float
-   Distribution: Uniform
-   Count: 10000
-   Mean: 50.199102
-   Std: 28.767333
-   Min: 0.000000
-   Max: 99.990000
-   Unique values: 6349
-   Null fraction: 0.000000
-
-years_experience:
-   Data type: Categorical
-   Distribution: Skewed
-   Count: 10000
-   Mean: 6.725000
-   Std: 6.659608
-   Min: 0.000000
-   Max: 47.000000
-   Unique values: 45
-   Null fraction: 0.000000
-
-СВОДКА ПО ПРЕДИКАТАМ:
-
-1. Predicate { column: "age", operator: Eq, value: 35.0306, value2: None }
-   Actual: 0.000000, KNN: 0.037811, Hist: 0.044000, Approx: 0.010000
-   Error KNN: 0.037811, Error Hist: 0.044000, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-2. Predicate { column: "age", operator: Lt, value: 25.549900466737817, value2: None }
-   Actual: 0.171800, KNN: 0.135835, Hist: 0.164689, Approx: 0.330000
-   Error KNN: 0.035965, Error Hist: 0.007111, Error Approx: 0.158200
-   Recommended scan: Index Scan
-
-3. Predicate { column: "age", operator: Gt, value: 39.77094976663109, value2: None }
-   Actual: 0.320400, KNN: 0.253456, Hist: 0.304801, Approx: 0.330000
-   Error KNN: 0.066944, Error Hist: 0.015599, Error Approx: 0.009600
-   Recommended scan: Bitmap Scan
-
-4. Predicate { column: "age", operator: Between, value: 27.480699533262182, value2: Some(61.51930046673782) }
-   Actual: 0.771500, KNN: 0.638496, Hist: 0.774803, Approx: 0.250000
-   Error KNN: 0.133004, Error Hist: 0.003303, Error Approx: 0.521500
-   Recommended scan: Seq Scan
-
-5. Predicate { column: "department_id", operator: Eq, value: 10.3954, value2: None }
-   Actual: 0.000000, KNN: 0.047399, Hist: 0.053895, Approx: 0.010000
-   Error KNN: 0.047399, Error Hist: 0.053895, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-6. Predicate { column: "department_id", operator: Lt, value: 4.638433885804055, value2: None }
-   Actual: 0.207300, KNN: 0.167683, Hist: 0.198252, Approx: 0.330000
-   Error KNN: 0.039617, Error Hist: 0.009048, Error Approx: 0.122700
-   Recommended scan: Index Scan
-
-7. Predicate { column: "department_id", operator: Gt, value: 13.273883057097972, value2: None }
-   Actual: 0.342800, KNN: 0.306378, Hist: 0.346734, Approx: 0.330000
-   Error KNN: 0.036422, Error Hist: 0.003934, Error Approx: 0.012800
-   Recommended scan: Seq Scan
-
-8. Predicate { column: "department_id", operator: Between, value: 6.756966114195945, value2: Some(14.243033885804055) }
-   Actual: 0.402100, KNN: 0.569269, Hist: 0.396104, Approx: 0.250000
-   Error KNN: 0.167169, Error Hist: 0.005996, Error Approx: 0.152100
-   Recommended scan: Seq Scan
-
-9. Predicate { column: "id", operator: Eq, value: 4999.5, value2: None }
-   Actual: 0.000000, KNN: 0.000100, Hist: 0.000100, Approx: 0.010000
-   Error KNN: 0.000100, Error Hist: 0.000100, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-10. Predicate { column: "id", operator: Lt, value: 2112.748668485628, value2: None }
-   Actual: 0.211300, KNN: 0.204659, Hist: 0.211296, Approx: 0.330000
-   Error KNN: 0.006641, Error Hist: 0.000004, Error Approx: 0.118700
-   Recommended scan: Index Scan
-
-11. Predicate { column: "id", operator: Gt, value: 6442.875665757186, value2: None }
-   Actual: 0.355700, KNN: 0.351373, Hist: 0.355648, Approx: 0.330000
-   Error KNN: 0.004327, Error Hist: 0.000052, Error Approx: 0.025700
-   Recommended scan: Seq Scan
-
-12. Predicate { column: "id", operator: Between, value: 2886.751331514372, value2: Some(7112.2486684856285) }
-   Actual: 0.422600, KNN: 0.182728, Hist: 0.422592, Approx: 0.250000
-   Error KNN: 0.239872, Error Hist: 0.000008, Error Approx: 0.172600
-   Recommended scan: Index Scan
-
-13. Predicate { column: "salary", operator: Eq, value: 398137.9118, value2: None }
-   Actual: 0.000000, KNN: 0.000100, Hist: 0.000000, Approx: 0.010000
-   Error KNN: 0.000100, Error Hist: 0.000000, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-14. Predicate { column: "salary", operator: Lt, value: 50005.0, value2: None }
-   Actual: 0.000000, KNN: 0.069876, Hist: 0.000000, Approx: 0.330000
-   Error KNN: 0.069876, Error Hist: 0.000000, Error Approx: 0.330000
-   Recommended scan: Index Scan
-
-15. Predicate { column: "salary", operator: Gt, value: 2374570.5717649315, value2: None }
-   Actual: 0.020100, KNN: 0.283889, Hist: 0.856632, Approx: 0.330000
-   Error KNN: 0.263789, Error Hist: 0.836532, Error Approx: 0.309900
-   Recommended scan: Bitmap Scan
-
-16. Predicate { column: "salary", operator: Between, value: 4002866.319929863, value2: Some(319632242.68007016) }
-   Actual: 0.011200, KNN: 0.285308, Hist: 0.756183, Approx: 0.250000
-   Error KNN: 0.274108, Error Hist: 0.744983, Error Approx: 0.238800
-   Recommended scan: Bitmap Scan
-
-17. Predicate { column: "score", operator: Eq, value: 50.199101999999904, value2: None }
-   Actual: 0.000000, KNN: 0.000194, Hist: 0.009921, Approx: 0.010000
-   Error KNN: 0.000194, Error Hist: 0.009921, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-18. Predicate { column: "score", operator: Lt, value: 21.431768603357188, value2: None }
-   Actual: 0.211500, KNN: 0.276229, Hist: 0.209224, Approx: 0.330000
-   Error KNN: 0.064729, Error Hist: 0.002276, Error Approx: 0.118500
-   Recommended scan: Bitmap Scan
-
-19. Predicate { column: "score", operator: Gt, value: 64.58276869832126, value2: None }
-   Actual: 0.354700, KNN: 0.314007, Hist: 0.354611, Approx: 0.330000
-   Error KNN: 0.040693, Error Hist: 0.000089, Error Approx: 0.024700
-   Recommended scan: Seq Scan
-
-20. Predicate { column: "score", operator: Between, value: 28.767333396642716, value2: Some(71.22266660335728) }
-   Actual: 0.426200, KNN: 0.447649, Hist: 0.428579, Approx: 0.250000
-   Error KNN: 0.021449, Error Hist: 0.002379, Error Approx: 0.176200
-   Recommended scan: Seq Scan
-
-21. Predicate { column: "years_experience", operator: Eq, value: 6.725, value2: None }
-   Actual: 0.000000, KNN: 0.048114, Hist: 0.044000, Approx: 0.010000
-   Error KNN: 0.048114, Error Hist: 0.044000, Error Approx: 0.010000
-   Recommended scan: Index Scan
-
-22. Predicate { column: "years_experience", operator: Lt, value: 0.06539227881999476, value2: None }
-   Actual: 0.137700, KNN: 0.013188, Hist: 0.011330, Approx: 0.330000
-   Error KNN: 0.124512, Error Hist: 0.126370, Error Approx: 0.192300
-   Recommended scan: Index Scan
-
-23. Predicate { column: "years_experience", operator: Gt, value: 10.054803860590003, value2: None }
-   Actual: 0.240600, KNN: 0.241604, Hist: 0.248113, Approx: 0.330000
-   Error KNN: 0.001004, Error Hist: 0.007513, Error Approx: 0.089400
-   Recommended scan: Index Scan
-
-24. Predicate { column: "years_experience", operator: Between, value: 6.659607721180005, value2: Some(34.34039227882) }
-   Actual: 0.408200, KNN: 0.489371, Hist: 0.385454, Approx: 0.250000
-   Error KNN: 0.081171, Error Hist: 0.022746, Error Approx: 0.158200
-   Recommended scan: Seq Scan
-
-
-ИТОГОВАЯ СТАТИСТИКА:
-Средняя ошибка KNN: 0.075953
-Средняя ошибка гистограммы: 0.080827
-Средняя ошибка приближенной оценки: 0.124662
+Итог
+----
+  Средняя ошибка KNN:           0.0581
+  Средняя ошибка гистограммы:   0.0845
+  Средняя ошибка приближённой:  0.1275
+  KNN точнее приближённой на:   54.4%
+  Backend:                      Python
+  Время выполнения:             221.593 мс

@@ -259,6 +259,56 @@ class KNNSelectivityModel:
             total += abs(predicted - actual)
         return total / len(test_predicates)
 
+    def feature_importance(self) -> list[tuple[str, float, float]]:
+        """Возвращает (имя признака, std_norm, важность %) для каждого признака.
+
+        Чтобы избежать перекоса из-за разных единиц измерения (зарплата в
+        миллионах vs operator_eq в {0,1}), сначала нормализуем каждый признак
+        к [0,1] по его min..max в обучающей выборке, а потом считаем std.
+        Это и есть честный "вес": чем сильнее нормированный признак варьируется,
+        тем сильнее он влияет на евклидово расстояние и предсказание KNN.
+        """
+        n_features = len(self.feature_names)
+        training = self.knn.training_data
+        if not training or n_features == 0:
+            return []
+        n = float(len(training))
+        stds: list[float] = []
+        for fi in range(n_features):
+            fmin = math.inf
+            fmax = -math.inf
+            for ex in training:
+                v = ex.features[fi] if fi < len(ex.features) else 0.0
+                if v < fmin:
+                    fmin = v
+                if v > fmax:
+                    fmax = v
+            rng = fmax - fmin
+            if rng <= 1e-12:
+                stds.append(0.0)
+                continue
+            s = 0.0
+            sq = 0.0
+            for ex in training:
+                v = ex.features[fi] if fi < len(ex.features) else 0.0
+                norm = (v - fmin) / rng
+                s += norm
+                sq += norm * norm
+            mean = s / n
+            var = max(0.0, sq / n - mean * mean)
+            stds.append(math.sqrt(var))
+        total = sum(stds)
+        result = [
+            (
+                name,
+                std,
+                (std / total * 100.0) if total > 0 else 0.0,
+            )
+            for name, std in zip(self.feature_names, stds)
+        ]
+        result.sort(key=lambda item: item[2], reverse=True)
+        return result
+
 
 # ==================== ГЕНЕРАЦИЯ ДАННЫХ ====================
 
@@ -282,7 +332,7 @@ class DataGenerator:
                 else:
                     experience = random.randint(0, max(min(age - 22, 40), 0))
                 writer.writerow([i, age, salary, dept_id, f"{score:.2f}", experience])
-        print(f"✅ Сгенерирован синтетический CSV: {num_rows} строк")
+        print(f"Сгенерирован синтетический CSV: {num_rows} строк")
 
 
 # ==================== АНАЛИЗ ====================
@@ -400,8 +450,22 @@ class DataAnalyzer:
             return Distribution.NORMAL, {"mean": mean, "std": std}
         return Distribution.UNIFORM, {"min": min(values), "max": max(values)}
 
+    def training_breakdown(self) -> tuple[list[tuple[Operator, int]], list[tuple[str, int]]]:
+        by_op: dict[Operator, int] = {}
+        by_col: dict[str, int] = {}
+        for ex in self.knn_model.knn.training_data:
+            by_op[ex.predicate_type] = by_op.get(ex.predicate_type, 0) + 1
+            by_col[ex.column_name] = by_col.get(ex.column_name, 0) + 1
+        op_order = [Operator.EQ, Operator.LT, Operator.LE, Operator.GT,
+                    Operator.GE, Operator.BETWEEN, Operator.NE, Operator.LIKE]
+        ops = [(op, by_op[op]) for op in op_order if op in by_op]
+        for op, c in by_op.items():
+            if all(o is not op for o, _ in ops):
+                ops.append((op, c))
+        cols = sorted(by_col.items(), key=lambda x: x[0])
+        return ops, cols
+
     def train_knn_model(self) -> None:
-        print("\n\U0001f9e0 Обучение KNN модели на исторических данных...")
         examples: list[TrainingExample] = []
         for col_name, values in self.data.items():
             if not values or col_name not in self.metadata:
@@ -412,9 +476,6 @@ class DataAnalyzer:
             )
         for ex in examples:
             self.knn_model.add_training_example(ex)
-        print(
-            f"✅ KNN модель обучена ({len(self.knn_model.knn.training_data)} примеров)"
-        )
 
     def _generate_training_predicates(
         self, col_name: str, values: list[float], metadata: ColumnMetadata
@@ -585,29 +646,11 @@ class DataAnalyzer:
             )
 
         results: list[PredicateSelectivity] = []
-        print("\n\U0001f52c Анализ селективности предикатов (с KNN)\n")
-        print(
-            f"{'Предикат':<15} {'Реальная':<10} {'KNN':<10} {'Гистогр.':<10} "
-            f"{'Приближ.':<10} {'Реком.скан':<12} {'KNN ошибка':<8}"
-        )
-
-        test_size = max(len(predicates) // 3, 1)
-        test_data = []
-        for predicate in predicates[:test_size]:
-            metadata = self.metadata.get(predicate.column)
-            if metadata is None:
-                continue
-            actual = self.compute_actual_selectivity(predicate)
-            test_data.append((predicate, actual, metadata))
-        knn_error = self.knn_model.evaluate(test_data)
-        print(f"\U0001f4ca Средняя ошибка KNN на тестовых данных: {knn_error:.4f}")
-
         for predicate in predicates:
             actual = self.compute_actual_selectivity(predicate)
             ml_est = self.estimate_selectivity_ml(predicate)
             hist_est = self.estimate_selectivity_histogram(predicate)
             approx_est = self.estimate_selectivity_approx(predicate)
-            error_ml = abs(actual - ml_est)
             recommended = self.recommend_scan_method(predicate, ml_est)
             results.append(
                 PredicateSelectivity(
@@ -616,106 +659,111 @@ class DataAnalyzer:
                     ml_estimate=ml_est,
                     histogram_estimate=hist_est,
                     approx_estimate=approx_est,
-                    error_ml=error_ml,
+                    error_ml=abs(actual - ml_est),
                     error_histogram=abs(actual - hist_est),
                     error_approx=abs(actual - approx_est),
                     recommended_scan=recommended,
                 )
             )
-
-            if predicate.operator is Operator.EQ:
-                pred_str = f"{predicate.column} = {predicate.value:.1f}"
-            elif predicate.operator is Operator.LT:
-                pred_str = f"{predicate.column} < {predicate.value:.1f}"
-            elif predicate.operator is Operator.GT:
-                pred_str = f"{predicate.column} > {predicate.value:.1f}"
-            elif predicate.operator is Operator.BETWEEN:
-                v2 = predicate.value2 if predicate.value2 is not None else 0.0
-                pred_str = f"{predicate.column} BETWEEN {predicate.value:.1f} AND {v2:.1f}"
-            else:
-                pred_str = f"{predicate.column} op {predicate.value}"
-            print(
-                f"{pred_str[:15]:<15} {actual:<10.3f} {ml_est:<10.3f} {hist_est:<10.3f} "
-                f"{approx_est:<10.3f} {recommended.value:<12} {error_ml:<8.4f}"
-            )
-
-        avg_ml = sum(r.error_ml for r in results) / len(results)
-        avg_hist = sum(r.error_histogram for r in results) / len(results)
-        avg_approx = sum(r.error_approx for r in results) / len(results)
-        print("\n\U0001f4ca Итоговая статистика (с KNN):")
-        print(f"   Средняя ошибка KNN: {avg_ml:.4f}")
-        print(f"   Средняя ошибка гистограммы: {avg_hist:.4f}")
-        print(f"   Средняя ошибка приближенной оценки: {avg_approx:.4f}")
-        if avg_approx > 0:
-            improvement = (avg_approx - avg_ml) / avg_approx * 100
-            print(f"   Улучшение точности KNN vs приближенная: {improvement:.2f}%")
-
         return results
 
 
 # ==================== ОСНОВНАЯ ФУНКЦИЯ ====================
 
 
-def write_report(
-    report_path: Path,
+def _format_predicate(p: Predicate) -> str:
+    if p.operator is Operator.BETWEEN:
+        v2 = p.value2 if p.value2 is not None else 0.0
+        return f"{p.column} BETWEEN {p.value:.2f} AND {v2:.2f}"
+    return f"{p.column} {p.operator.value} {p.value:.2f}"
+
+
+def _bar(width: int, frac: float) -> str:
+    frac = max(0.0, min(1.0, frac))
+    filled = round(frac * width)
+    return "█" * filled + "·" * (width - filled)
+
+
+def write_analysis(
+    out,
+    backend: str,
+    dataset: Path,
+    row_count: int,
+    numeric_columns: list[str],
     analyzer: DataAnalyzer,
     results: list[PredicateSelectivity],
-    dataset_path: Path,
     elapsed_ms: float,
 ) -> None:
-    numeric_columns = analyzer.numeric_columns_sorted()
-    with report_path.open("w", encoding="utf-8") as report:
-        report.write("ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT\n")
-        report.write("================================================\n\n")
-        report.write("Backend: Python\n")
-        report.write(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        report.write(f"Файл данных: {dataset_path}\n\n")
-        report.write("KNN параметры: k=5\n\n")
-        report.write(
-            f"Количество обучающих примеров: {len(analyzer.knn_model.knn.training_data)}\n\n"
+    w = out.write
+
+    w("================================================================\n")
+    w(f"  ML Optimizer — KNN Selectivity Estimator  (backend: {backend})\n")
+    w("================================================================\n\n")
+
+    # [1] Загрузка
+    w("[1/4] Загрузка данных\n")
+    w(f"      Файл:    {dataset}\n")
+    w(f"      Строк:   {row_count}\n")
+    w(f"      Числовые столбцы ({len(numeric_columns)}): {', '.join(numeric_columns)}\n\n")
+
+    # [2] Обучение
+    by_op, by_col = analyzer.training_breakdown()
+    total_train = len(analyzer.knn_model.knn.training_data)
+    w("[2/4] Обучение KNN-модели\n")
+    w(f"      k = {analyzer.knn_model.knn.k}  (взвешенное по евклидову расстоянию)\n")
+    w(f"      Всего обучающих примеров: {total_train}\n")
+    w(f"      Признаков на пример:      {len(analyzer.knn_model.feature_names)}\n")
+    w("      Разбивка по операторам предикатов:\n")
+    for op, count in by_op:
+        w(f"        {op.value:<8} : {count:>4}\n")
+    w("      Разбивка по столбцам:\n")
+    for col, count in by_col:
+        w(f"        {col:<20} : {count:>4}\n")
+    w("\n")
+
+    # [3] Важность признаков
+    importance = analyzer.knn_model.feature_importance()
+    w("[3/4] Приоритеты признаков (что модель считает важным)\n")
+    w("      KNN использует евклидово расстояние, поэтому 'вес' признака =\n")
+    w("      его std в обучающей выборке: чем сильнее признак варьируется,\n")
+    w("      тем сильнее он влияет на расстояние и предсказание.\n\n")
+    w("      #  Признак                  Std       Важность\n")
+    w("      ---------------------------------------------------------------\n")
+    max_pct = importance[0][2] if importance else 1.0
+    if max_pct < 1e-9:
+        max_pct = 1.0
+    for i, (name, std, pct) in enumerate(importance, 1):
+        w(f"      {i:>2}  {name:<22}  {std:>7.4f}   {pct:>5.1f}%  {_bar(20, pct / max_pct)}\n")
+    w("\n      Топ-3 приоритетных признака:\n")
+    for i, (name, _, pct) in enumerate(importance[:3], 1):
+        w(f"        {i}. {name:<22} ({pct:.1f}%)\n")
+    w("\n")
+
+    # [4] Предсказания
+    w("[4/4] Предсказания на сгенерированных предикатах\n")
+    w(f"      {'Предикат':<32} {'Реал.':>7} {'KNN':>7} {'Гистогр.':>8} {'Приближ.':>8}  Скан\n")
+    w(f"      {'-' * 78}\n")
+    for r in results:
+        pred = _format_predicate(r.predicate)[:32]
+        w(
+            f"      {pred:<32} {r.actual_selectivity:>7.3f} {r.ml_estimate:>7.3f} "
+            f"{r.histogram_estimate:>8.3f} {r.approx_estimate:>8.3f}  {r.recommended_scan.value}\n"
         )
-        report.write(f"Числовые столбцы: {', '.join(numeric_columns)}\n\n")
-        report.write(f"Время выполнения: {elapsed_ms:.3f} мс\n\n")
+    w("\n")
 
-        report.write("СТАТИСТИКА ПО СТОЛБЦАМ:\n\n")
-        for col in numeric_columns:
-            m = analyzer.metadata[col]
-            report.write(f"{col}:\n")
-            report.write(f"   Data type: {m.data_type.value}\n")
-            report.write(f"   Distribution: {m.distribution.value}\n")
-            report.write(f"   Count: {m.stats.count}\n")
-            report.write(f"   Mean: {m.stats.mean:.6f}\n")
-            report.write(f"   Std: {m.stats.std:.6f}\n")
-            report.write(f"   Min: {m.stats.min:.6f}\n")
-            report.write(f"   Max: {m.stats.max:.6f}\n")
-            report.write(f"   Unique values: {m.stats.unique_values}\n")
-            report.write(f"   Null fraction: {m.stats.null_frac:.6f}\n\n")
-
-        report.write("СВОДКА ПО ПРЕДИКАТАМ:\n\n")
-        for i, r in enumerate(results, 1):
-            p = r.predicate
-            v2_part = f", value2: Some({p.value2})" if p.value2 is not None else ", value2: None"
-            report.write(
-                f"{i}. Predicate {{ column: \"{p.column}\", operator: {p.operator.name.title()}, "
-                f"value: {p.value}{v2_part} }}\n"
-            )
-            report.write(
-                f"   Actual: {r.actual_selectivity:.6f}, KNN: {r.ml_estimate:.6f}, "
-                f"Hist: {r.histogram_estimate:.6f}, Approx: {r.approx_estimate:.6f}\n"
-            )
-            report.write(
-                f"   Error KNN: {r.error_ml:.6f}, Error Hist: {r.error_histogram:.6f}, "
-                f"Error Approx: {r.error_approx:.6f}\n"
-            )
-            report.write(f"   Recommended scan: {r.recommended_scan.value}\n\n")
-
-        avg_ml = sum(r.error_ml for r in results) / len(results)
-        avg_hist = sum(r.error_histogram for r in results) / len(results)
-        avg_approx = sum(r.error_approx for r in results) / len(results)
-        report.write("\nИТОГОВАЯ СТАТИСТИКА:\n")
-        report.write(f"Средняя ошибка KNN: {avg_ml:.6f}\n")
-        report.write(f"Средняя ошибка гистограммы: {avg_hist:.6f}\n")
-        report.write(f"Средняя ошибка приближенной оценки: {avg_approx:.6f}\n")
+    # Итог
+    n = len(results)
+    avg_ml = sum(r.error_ml for r in results) / n
+    avg_hist = sum(r.error_histogram for r in results) / n
+    avg_approx = sum(r.error_approx for r in results) / n
+    improvement = (avg_approx - avg_ml) / avg_approx * 100.0 if avg_approx > 0 else 0.0
+    w("Итог\n----\n")
+    w(f"  Средняя ошибка KNN:           {avg_ml:.4f}\n")
+    w(f"  Средняя ошибка гистограммы:   {avg_hist:.4f}\n")
+    w(f"  Средняя ошибка приближённой:  {avg_approx:.4f}\n")
+    w(f"  KNN точнее приближённой на:   {improvement:.1f}%\n")
+    w(f"  Backend:                      {backend}\n")
+    w(f"  Время выполнения:             {elapsed_ms:.3f} мс\n")
 
 
 def main() -> None:
@@ -723,14 +771,10 @@ def main() -> None:
     parser.add_argument("dataset", nargs="?", default="synthetic_data.csv")
     args = parser.parse_args()
 
-    print("\U0001f680 ML Optimizer for PostgreSQL - KNN-based Selectivity Estimator (Python backend)\n")
-
     path = Path(args.dataset)
     if not path.exists():
-        print("\U0001f4c1 Файл не найден. Генерирую синтетические данные...")
+        print(f"Файл не найден, генерирую синтетические данные: {path}")
         DataGenerator().generate_synthetic_csv(path, 10_000)
-
-    print(f"\U0001f4c2 Анализирую файл: {path}")
 
     start = time.perf_counter()
     analyzer = DataAnalyzer.from_csv(path)
@@ -738,38 +782,20 @@ def main() -> None:
     numeric_columns = analyzer.numeric_columns_sorted()
     if not numeric_columns:
         raise RuntimeError("В CSV не найдено числовых столбцов для анализа")
+    row_count = max((len(v) for v in analyzer.data.values()), default=0)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
-    print("\n\U0001f50d Детальный анализ выборочных предикатов:")
-    for r in results[:5]:
-        print(f"\n   Предикат: {r.predicate}")
-        print(f"     Реальная селективность: {r.actual_selectivity:.4f}")
-        print(f"     KNN оценка: {r.ml_estimate:.4f} (ошибка: {r.error_ml:.4f})")
-        print(f"     Гистограмма: {r.histogram_estimate:.4f} (ошибка: {r.error_histogram:.4f})")
-        print(f"     Приближенная: {r.approx_estimate:.4f} (ошибка: {r.error_approx:.4f})")
-        print(f"     \U0001f3af Рекомендуемый метод сканирования: {r.recommended_scan.value}")
-        if r.recommended_scan is ScanMethod.SEQ_SCAN:
-            print(
-                f"        Причина: Низкая селективность ({r.actual_selectivity*100:.1f}% строк) "
-                "- дешевле прочитать всю таблицу"
-            )
-        elif r.recommended_scan is ScanMethod.INDEX_SCAN:
-            print(
-                f"        Причина: Высокая селективность ({r.actual_selectivity*100:.1f}% строк) "
-                "- индекс эффективно отфильтрует"
-            )
-        else:
-            print(
-                f"        Причина: Средняя селективность ({r.actual_selectivity*100:.1f}% строк) "
-                "- bitmap scan балансирует I/O"
-            )
+    # Структурированный вывод и в stdout, и в файл — чтобы GUI мог распарсить отчёт.
+    write_analysis(sys.stdout, "Python", path, row_count, numeric_columns,
+                   analyzer, results, elapsed_ms)
 
     report_path = Path("ml_optimizer_knn_report.txt")
-    write_report(report_path, analyzer, results, path, elapsed_ms)
+    with report_path.open("w", encoding="utf-8") as report:
+        report.write(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        write_analysis(report, "Python", path, row_count, numeric_columns,
+                       analyzer, results, elapsed_ms)
 
-    print(f"\n⏱  Время выполнения (Python): {elapsed_ms:.3f} мс")
-    print(f"\n\U0001f4c4 Отчет сохранен в: {report_path}")
-    print("\n✅ Анализ с KNN завершен!")
+    print(f"\nОтчёт сохранён в: {report_path}")
 
 
 if __name__ == "__main__":

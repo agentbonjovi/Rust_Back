@@ -857,12 +857,14 @@ def parse_report_metrics(report_text: str, dataset_path: Path | None = None) -> 
     if not report_text.strip():
         return {}, {}
 
-    value_pattern = re.compile(r"Actual: ([0-9.]+), KNN: ([0-9.]+), Hist: ([0-9.]+), Approx: ([0-9.]+)")
-    error_pattern = re.compile(r"Error KNN: ([0-9.]+), Error Hist: ([0-9.]+), Error Approx: ([0-9.]+)")
-    scan_pattern = re.compile(r"Recommended scan: (.+)")
-    numeric_columns_pattern = re.compile(r"Числовые столбцы: (.+)")
-    dataset_pattern = re.compile(r"Файл данных: (.+)")
-    backend_pattern = re.compile(r"^Backend:\s*(\w+)", re.MULTILINE)
+    # Структурированный отчёт ML Optimizer: табличные строки вида
+    #   "<pred> <actual> <knn> <hist> <approx> <Seq|Index|Bitmap> Scan"
+    table_row_pattern = re.compile(
+        r"^\s{4,}(?P<pred>.+?)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+(Seq Scan|Index Scan|Bitmap Scan)\s*$"
+    )
+    numeric_columns_pattern = re.compile(r"Числовые столбцы(?:\s*\(\d+\))?:\s*(.+)")
+    dataset_pattern = re.compile(r"Файл(?:\s+данных)?:\s*(.+)")
+    backend_pattern = re.compile(r"^\s*Backend:\s*(\w+)", re.MULTILINE)
     elapsed_pattern = re.compile(r"Время выполнения:\s*([0-9.]+)\s*мс")
 
     values = []
@@ -876,18 +878,13 @@ def parse_report_metrics(report_text: str, dataset_path: Path | None = None) -> 
         if dataset_match:
             report_dataset = dataset_match.group(1).strip()
             continue
-        value_match = value_pattern.search(line)
-        if value_match:
-            values.append(tuple(float(item) for item in value_match.groups()))
-            continue
-        error_match = error_pattern.search(line)
-        if error_match:
-            errors.append(tuple(float(item) for item in error_match.groups()))
-            continue
-        scan_match = scan_pattern.search(line)
-        if scan_match:
-            label = scan_match.group(1).strip()
-            scan_counts[label] = scan_counts.get(label, 0) + 1
+        row_match = table_row_pattern.match(line)
+        if row_match:
+            actual, knn, hist, approx = (float(x) for x in row_match.group(2, 3, 4, 5))
+            scan_label = row_match.group(6).strip()
+            values.append((actual, knn, hist, approx))
+            errors.append((abs(actual - knn), abs(actual - hist), abs(actual - approx)))
+            scan_counts[scan_label] = scan_counts.get(scan_label, 0) + 1
             continue
         numeric_match = numeric_columns_pattern.search(line)
         if numeric_match:
