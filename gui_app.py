@@ -889,19 +889,59 @@ class AppState:
         return "Отчет пока не найден.\n\nЗапустите анализ, чтобы создать новый отчет."
 
     def _refresh_report_if_changed(self) -> bool:
-        """Если файл отчёта на диске новее запомненного — перечитываем его.
+        """Если файл отчёта на диске новее запомненного — перечитываем его
+        и пересчитываем summary/charts на основе нового текста.
 
         Это позволяет UI автоматически подхватывать новый отчёт даже когда
-        бинарь запускают мимо GUI (например, из терминала или сетапа).
+        бинарь запускают мимо GUI (например, из терминала или сетапа), а
+        также страхует от случаев, когда run_analysis по какой-то причине
+        не успел обновить сводку — пользователю не нужно жать "Обновить".
         """
         try:
             mtime = REPORT_FILE.stat().st_mtime if REPORT_FILE.exists() else 0.0
         except OSError:
             mtime = 0.0
-        if mtime != self.report_mtime:
-            self.report = self._read_report()
-            return True
-        return False
+        if mtime == self.report_mtime:
+            return False
+        self.report = self._read_report()
+        # Пересчитываем сводку/графики из свежего текста отчёта.
+        # Не передаём dataset_path в parse_report_metrics — иначе при
+        # несовпадении путей (например, относительный vs абсолютный)
+        # вернутся пустые словари.
+        summary, charts = parse_report_metrics(self.report)
+        if summary or charts:
+            merged_summary = dict(summary)
+            merged_charts = dict(charts)
+            # Сохраняем накопленные тайминги Rust/Python
+            if self.timings.get("rust"):
+                merged_summary["rust_ms"] = round(self.timings["rust"], 3)
+            if self.timings.get("python"):
+                merged_summary["python_ms"] = round(self.timings["python"], 3)
+            timing_bars = []
+            if self.timings.get("rust"):
+                timing_bars.append({"label": "Rust", "count": round(self.timings["rust"], 3)})
+            if self.timings.get("python"):
+                timing_bars.append({"label": "Python", "count": round(self.timings["python"], 3)})
+            if timing_bars:
+                merged_charts["timing_bars"] = timing_bars
+            # Подхватываем тайминг и backend из свежего отчёта в timings,
+            # чтобы при следующем запуске сравнения были актуальные данные.
+            last_backend = summary.get("last_backend")
+            last_elapsed = summary.get("last_elapsed_ms")
+            if last_backend and last_elapsed:
+                self.timings[str(last_backend)] = float(last_elapsed)
+                merged_summary[f"{last_backend}_ms"] = round(float(last_elapsed), 3)
+                # обновляем timing_bars с учётом нового значения
+                bars = []
+                if self.timings.get("rust"):
+                    bars.append({"label": "Rust", "count": round(self.timings["rust"], 3)})
+                if self.timings.get("python"):
+                    bars.append({"label": "Python", "count": round(self.timings["python"], 3)})
+                if bars:
+                    merged_charts["timing_bars"] = bars
+            self.summary = merged_summary
+            self.charts = merged_charts
+        return True
 
     def snapshot(self) -> dict[str, object]:
         with self.lock:
