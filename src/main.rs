@@ -8,6 +8,7 @@ use std::env;
 use std::path::Path;
 use std::fs::File;
 use std::io::Write;
+use std::time::Instant;
 
 type BackendType = NdArray;
 
@@ -1024,14 +1025,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     println!("📂 Анализирую файл: {}", path.display());
-    
+
     // Анализируем данные с KNN
+    let start = Instant::now();
     let mut analyzer = DataAnalyzer::from_csv(path)?;
     let results = analyzer.evaluate_predictors_with_knn()?;
     let numeric_columns = analyzer.numeric_columns_sorted();
     if numeric_columns.is_empty() {
         return Err("В CSV не найдено числовых столбцов для анализа".into());
     }
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
     
     // Детальный разбор для нескольких примеров
     println!("\n🔍 Детальный анализ выборочных предикатов:");
@@ -1067,11 +1070,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     writeln!(report, "ML OPTIMIZER FOR POSTGRESQL - KNN ANALYSIS REPORT")?;
     writeln!(report, "================================================\n")?;
+    writeln!(report, "Backend: Rust")?;
     writeln!(report, "Дата: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))?;
     writeln!(report, "Файл данных: {}\n", path.display())?;
     writeln!(report, "KNN параметры: k=5\n")?;
     writeln!(report, "Количество обучающих примеров: {}\n", analyzer.knn_model.knn.training_data.len())?;
     writeln!(report, "Числовые столбцы: {}\n", numeric_columns.join(", "))?;
+    writeln!(report, "Время выполнения: {:.3} мс\n", elapsed_ms)?;
     
     writeln!(report, "СТАТИСТИКА ПО СТОЛБЦАМ:\n")?;
     for column_name in &numeric_columns {
@@ -1111,6 +1116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(report, "Средняя ошибка гистограммы: {:.6}", avg_error_hist)?;
     writeln!(report, "Средняя ошибка приближенной оценки: {:.6}", avg_error_approx)?;
     
+    println!("\n⏱  Время выполнения (Rust): {:.3} мс", elapsed_ms);
     println!("\n📄 Отчет сохранен в: {}", report_path.display());
     println!("\n✅ Анализ с KNN завершен!");
     
