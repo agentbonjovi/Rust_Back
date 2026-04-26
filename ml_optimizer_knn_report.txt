@@ -1,7 +1,7 @@
-Дата: 2026-04-26 18:14:57
+Дата: 2026-04-26 19:15:22
 
 ================================================================
-  ML Optimizer — KNN Selectivity Estimator  (backend: Python)
+  ML Optimizer — KNN Selectivity Estimator  (backend: Rust)
 ================================================================
 
 [1/4] Загрузка данных
@@ -63,13 +63,13 @@
       department_id > 13.41              0.353   0.340    0.350    0.330  Seq Scan
       department_id BETWEEN 6.78 AND 1   0.404   0.576    0.395    0.250  Seq Scan
       id = 4999.50                       0.000   0.000    0.000    0.010  Index Scan
-      id < 2112.75                       0.211   0.209    0.211    0.330  Index Scan
-      id > 6442.88                       0.356   0.355    0.356    0.330  Seq Scan
-      id BETWEEN 2886.75 AND 7112.25     0.423   0.241    0.423    0.250  Index Scan
-      salary = 721449.90                 0.000   0.000    0.000    0.010  Index Scan
+      id < 2112.60                       0.211   0.209    0.211    0.330  Index Scan
+      id > 6442.95                       0.356   0.355    0.356    0.330  Seq Scan
+      id BETWEEN 2886.90 AND 7112.10     0.423   0.241    0.423    0.250  Index Scan
+      salary = 721450.12                 0.000   0.000    0.000    0.010  Index Scan
       salary < 50026.00                  0.000   0.073    0.000    0.330  Index Scan
-      salary > 13288444.01               0.005   0.236    0.893    0.330  Index Scan
-      salary BETWEEN 25184014.23 AND 2   0.003   0.161    0.797    0.250  Index Scan
+      salary > 13289147.59               0.005   0.236    0.893    0.330  Index Scan
+      salary BETWEEN 25185420.94 AND 2   0.003   0.161    0.797    0.250  Index Scan
       score = 49.92                      0.000   0.000    0.011    0.010  Index Scan
       score < 21.01                      0.211   0.200    0.210    0.330  Index Scan
       score > 64.37                      0.355   0.347    0.354    0.330  Seq Scan
@@ -85,5 +85,5 @@
   Средняя ошибка гистограммы:   0.0845
   Средняя ошибка приближённой:  0.1275
   KNN точнее приближённой на:   54.4%
-  Backend:                      Python
-  Время выполнения:             221.593 мс
+  Backend:                      Rust
+  Время выполнения:             5.887 мс
